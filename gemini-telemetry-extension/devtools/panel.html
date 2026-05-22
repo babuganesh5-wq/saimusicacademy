@@ -1,0 +1,570 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Gemini DevTools Tracker</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #060913;
+      --sidebar-bg: #0b1120;
+      --card-bg: rgba(18, 28, 56, 0.4);
+      --card-active: rgba(0, 242, 254, 0.08);
+      --border: rgba(255, 255, 255, 0.06);
+      --border-active: rgba(0, 242, 254, 0.3);
+      --primary: #00f2fe;
+      --secondary: #4facfe;
+      --accent: #bd00ff;
+      --text: #f0f4fc;
+      --text-muted: #7e8fae;
+      --success: #00e676;
+      --error: #ff1744;
+      --warning: #ffb300;
+      --code-bg: #0d1222;
+      --font: 'Outfit', sans-serif;
+      --font-code: 'Fira Code', monospace;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font);
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* Scrollbars */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: rgba(0, 0, 0, 0.2);
+    }
+    ::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.08);
+      border-radius: 4px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: rgba(0, 242, 254, 0.3);
+    }
+
+    /* Top Control Bar */
+    .toolbar {
+      height: 48px;
+      background: var(--sidebar-bg);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 16px;
+      gap: 16px;
+    }
+
+    .toolbar-left {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .logo-area {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .logo-area h2 {
+      font-size: 14px;
+      font-weight: 700;
+      background: linear-gradient(135deg, var(--primary), var(--secondary));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      letter-spacing: 0.5px;
+    }
+
+    .search-container {
+      position: relative;
+    }
+
+    .search-input {
+      background: rgba(0, 0, 0, 0.3);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 6px 12px 6px 28px;
+      color: var(--text);
+      font-family: var(--font);
+      font-size: 12px;
+      width: 240px;
+      transition: all 0.2s ease;
+    }
+
+    .search-input:focus {
+      outline: none;
+      border-color: var(--primary);
+      box-shadow: 0 0 10px rgba(0, 242, 254, 0.1);
+    }
+
+    .search-icon {
+      position: absolute;
+      left: 8px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--text-muted);
+      pointer-events: none;
+    }
+
+    .toolbar-right {
+      display: flex;
+      gap: 8px;
+    }
+
+    .btn {
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text-muted);
+      padding: 6px 12px;
+      font-size: 11px;
+      font-weight: 600;
+      font-family: var(--font);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.2s ease;
+    }
+
+    .btn:hover {
+      color: var(--text);
+      background: rgba(255, 255, 255, 0.06);
+      border-color: rgba(255, 255, 255, 0.12);
+    }
+
+    .btn-accent {
+      background: rgba(255, 23, 68, 0.05);
+      border-color: rgba(255, 23, 68, 0.15);
+      color: rgba(255, 23, 68, 0.8);
+    }
+
+    .btn-accent:hover {
+      background: rgba(255, 23, 68, 0.1);
+      border-color: rgba(255, 23, 68, 0.3);
+      color: var(--error);
+    }
+
+    /* Main Workspace Layout */
+    .workspace {
+      flex: 1;
+      display: flex;
+      overflow: hidden;
+    }
+
+    /* Left Sidebar: Stream logs */
+    .sidebar {
+      width: 320px;
+      background: var(--sidebar-bg);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .sidebar-header {
+      padding: 8px 16px;
+      font-size: 10px;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      background: rgba(0, 0, 0, 0.1);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .request-list {
+      flex: 1;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .request-item {
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border);
+      cursor: pointer;
+      transition: all 0.2s ease;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .request-item:hover {
+      background: rgba(255, 255, 255, 0.02);
+    }
+
+    .request-item.active {
+      background: var(--card-active);
+      border-left: 3px solid var(--primary);
+      padding-left: 13px; /* Account for border width */
+    }
+
+    .req-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .req-model {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--primary);
+    }
+
+    .req-time {
+      font-size: 9px;
+      color: var(--text-muted);
+    }
+
+    .req-middle {
+      font-size: 10px;
+      color: var(--text-muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      font-style: italic;
+    }
+
+    .req-bottom {
+      display: flex;
+      gap: 8px;
+      font-size: 9px;
+      font-weight: 600;
+    }
+
+    .badge {
+      padding: 2px 6px;
+      border-radius: 4px;
+      border: 1px solid transparent;
+    }
+
+    .badge-success {
+      background: rgba(0, 230, 118, 0.08);
+      color: var(--success);
+      border-color: rgba(0, 230, 118, 0.15);
+    }
+
+    .badge-error {
+      background: rgba(255, 23, 68, 0.08);
+      color: var(--error);
+      border-color: rgba(255, 23, 68, 0.15);
+    }
+
+    .badge-tokens {
+      background: rgba(255, 255, 255, 0.03);
+      color: var(--text-muted);
+      border-color: var(--border);
+    }
+
+    .badge-latency {
+      background: rgba(255, 255, 255, 0.03);
+      color: var(--text-muted);
+      border-color: var(--border);
+    }
+
+    .badge-latency.slow {
+      color: var(--error);
+      border-color: rgba(255, 23, 68, 0.2);
+    }
+
+    .badge-latency.medium {
+      color: var(--warning);
+      border-color: rgba(255, 179, 0, 0.2);
+    }
+
+    .badge-latency.fast {
+      color: var(--success);
+      border-color: rgba(0, 230, 118, 0.2);
+    }
+
+    .no-requests {
+      padding: 32px;
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 12px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+      margin-top: 40px;
+    }
+
+    /* Right Main Panel: Request Details */
+    .details-panel {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      background: var(--bg);
+    }
+
+    .details-empty {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      color: var(--text-muted);
+      font-size: 13px;
+      gap: 12px;
+    }
+
+    .details-header {
+      padding: 16px;
+      border-bottom: 1px solid var(--border);
+      background: rgba(0, 0, 0, 0.15);
+    }
+
+    .det-url {
+      font-family: var(--font-code);
+      font-size: 11px;
+      color: var(--text-muted);
+      word-break: break-all;
+      margin-bottom: 12px;
+      background: rgba(0, 0, 0, 0.2);
+      padding: 6px 10px;
+      border-radius: 4px;
+      border: 1px solid var(--border);
+    }
+
+    .det-meta-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+      gap: 10px;
+    }
+
+    .det-meta-card {
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 8px 12px;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .det-meta-label {
+      font-size: 9px;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      letter-spacing: 0.5px;
+      margin-bottom: 2px;
+    }
+
+    .det-meta-val {
+      font-size: 14px;
+      font-weight: 700;
+    }
+
+    .det-meta-val.tokens {
+      color: var(--primary);
+    }
+
+    .det-meta-val.cost {
+      color: var(--accent);
+    }
+
+    /* Tabbed Inspector Navigation */
+    .tabs-nav {
+      height: 36px;
+      background: var(--sidebar-bg);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      padding: 0 16px;
+    }
+
+    .tab-btn {
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      padding: 0 16px;
+      font-family: var(--font);
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      position: relative;
+      transition: all 0.2s ease;
+    }
+
+    .tab-btn:hover {
+      color: var(--text);
+    }
+
+    .tab-btn.active {
+      color: var(--primary);
+    }
+
+    .tab-btn.active::after {
+      content: '';
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      width: 100%;
+      height: 2px;
+      background: var(--primary);
+      box-shadow: 0 0 10px var(--primary);
+    }
+
+    /* Tab Contents */
+    .tab-contents {
+      flex: 1;
+      overflow-y: auto;
+      padding: 16px;
+    }
+
+    .tab-pane {
+      display: none;
+      height: 100%;
+    }
+
+    .tab-pane.active {
+      display: block;
+    }
+
+    .inspector-box {
+      width: 100%;
+      height: 100%;
+      min-height: 250px;
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 16px;
+      font-family: var(--font-code);
+      font-size: 12px;
+      line-height: 1.6;
+      color: #b0c4de;
+      overflow: auto;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+
+    /* Markdown/Rich presentation inside inspector */
+    .inspector-box.completion {
+      font-family: var(--font);
+      font-size: 13px;
+      line-height: 1.6;
+      color: var(--text);
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Top Controls -->
+  <div class="toolbar">
+    <div class="toolbar-left">
+      <div class="logo-area">
+        <h2>Gemini DevTools Tracker</h2>
+      </div>
+      <div class="search-container">
+        <svg class="search-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.3-4.3"/></svg>
+        <input type="text" class="search-input" id="search-input" placeholder="Filter requests by model, prompt, status...">
+      </div>
+    </div>
+    <div class="toolbar-right">
+      <button class="btn" id="btn-clear">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M19 7l-.8 13.4c-.1 1.2-1.1 2.1-2.3 2.1H8.1c-1.2 0-2.2-.9-2.3-2.1L5 7m5 4v6m4-6v6M1 4h22M8 4V1h8v3"/></svg>
+        Clear Stream
+      </button>
+      <button class="btn btn-accent" id="btn-reset">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9"/></svg>
+        Reset Global Stats
+      </button>
+    </div>
+  </div>
+
+  <!-- Workspace split -->
+  <div class="workspace">
+    <!-- Sidebar: list of requests -->
+    <div class="sidebar">
+      <div class="sidebar-header">Request Traces</div>
+      <div class="request-list" id="request-list">
+        <div class="no-requests">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2M12 11a4 4 0 100-8 4 4 0 000 8z"/></svg>
+          Waiting for Gemini requests...
+        </div>
+      </div>
+    </div>
+
+    <!-- Inspector panel -->
+    <div class="details-panel" id="details-panel">
+      <div class="details-empty" id="details-empty">
+        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><path d="M9 17H5M12 17h7M5 12h14M5 7h4M12 7h7"/></svg>
+        Select a request trace from the left pane to inspect prompt & completion details.
+      </div>
+
+      <!-- Real Details View (Hidden by default) -->
+      <div class="details-content" id="details-content" style="display: none; height: 100%; flex-direction: column;">
+        <div class="details-header">
+          <div class="det-url" id="det-url">https://generativelanguage.googleapis.com/...</div>
+          
+          <div class="det-meta-grid">
+            <div class="det-meta-card">
+              <span class="det-meta-label">Status</span>
+              <span class="det-meta-val" id="det-status">200 OK</span>
+            </div>
+            <div class="det-meta-card">
+              <span class="det-meta-label">Latency</span>
+              <span class="det-meta-val" id="det-latency">0 ms</span>
+            </div>
+            <div class="det-meta-card">
+              <span class="det-meta-label">Tokens</span>
+              <span class="det-meta-val tokens" id="det-tokens">0 tkn</span>
+            </div>
+            <div class="det-meta-card">
+              <span class="det-meta-label">Est. Cost</span>
+              <span class="det-meta-val cost" id="det-cost">$0.00000</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Navigation Tabs -->
+        <div class="tabs-nav">
+          <button class="tab-btn active" data-tab="tab-prompt">Prompt Input</button>
+          <button class="tab-btn" data-tab="tab-completion">Candidate Output</button>
+          <button class="tab-btn" data-tab="tab-raw">Raw Payload JSON</button>
+        </div>
+
+        <!-- Tab panes -->
+        <div class="tab-contents">
+          <!-- Prompt Tab -->
+          <div class="tab-pane active" id="tab-prompt">
+            <div class="inspector-box" id="box-prompt">Prompt text goes here...</div>
+          </div>
+          
+          <!-- Completion Tab -->
+          <div class="tab-pane" id="tab-completion">
+            <div class="inspector-box completion" id="box-completion">Generated response goes here...</div>
+          </div>
+
+          <!-- Raw Data Tab -->
+          <div class="tab-pane" id="tab-raw">
+            <div class="inspector-box" id="box-raw">Raw payload response JSON goes here...</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="panel.js"></script>
+</body>
+</html>

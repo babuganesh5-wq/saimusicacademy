@@ -1,0 +1,1587 @@
+import { useEffect, useMemo, useState, useRef, useCallback, type FormEvent } from "react";
+
+/* ── Types ────────────────────────────────────────────── */
+
+type Route =
+  | "home"
+  | "about"
+  | "features"
+  | "pricing"
+  | "faq"
+  | "contact"
+  | "login"
+  | "dashboard"
+  | "billing"
+  | "support"
+  | "terms"
+  | "privacy"
+  | "awards"
+  | "gallery";
+
+type BillingCycle = "monthly" | "yearly";
+type PaymentMethod = "card" | "upi" | "wallet";
+type PlanId = "starter" | "pro" | "scale";
+type SubscriptionStatus = "trial" | "active" | "canceled";
+type ToastKind = "success" | "error" | "info";
+
+type Plan = {
+  id: PlanId;
+  name: string;
+  tagline: string;
+  monthly: number;
+  yearly: number;
+  trialDays: number;
+  features: string[];
+  highlight?: boolean;
+};
+
+type User = {
+  id: string;
+  name: string;
+  email: string;
+  phone: string;
+  role: "member" | "admin";
+  createdAt: string;
+};
+
+type Subscription = {
+  id: string;
+  planId: PlanId;
+  cycle: BillingCycle;
+  status: SubscriptionStatus;
+  coupon?: string;
+  startedAt: string;
+  nextRenewal: string;
+  paymentMethod: PaymentMethod;
+  amount: number;
+};
+
+type Enquiry = {
+  id: string;
+  name: string;
+  email: string;
+  phone: string;
+  subject: string;
+  message: string;
+  source: "contact" | "chatbot" | "pricing";
+  createdAt: string;
+  adminEmailQueued: boolean;
+  autoReplyQueued: boolean;
+};
+
+type Ticket = {
+  id: string;
+  email: string;
+  subject: string;
+  message: string;
+  priority: "normal" | "urgent";
+  status: "open" | "in_review" | "closed";
+  source: "support" | "chatbot";
+  createdAt: string;
+  adminReply?: string;
+  repliedAt?: string;
+};
+
+type ChatMessage = {
+  id: string;
+  sender: "bot" | "user";
+  text: string;
+  createdAt: string;
+};
+
+type AssignmentStatus = "pending" | "submitted" | "graded";
+
+type Assignment = {
+  id: string;
+  planId: PlanId;
+  title: string;
+  description: string;
+  dueDate: string;
+  status: AssignmentStatus;
+  submissionText?: string;
+  grade?: string;
+  feedback?: string;
+  videoUrl?: string;
+};
+
+type PracticeLog = {
+  id: string;
+  date: string;
+  duration: number; // minutes
+  notes: string;
+};
+
+type CalendarEvent = {
+  id: string;
+  planId: PlanId;
+  title: string;
+  time: string;
+  instructor: string;
+  meetingLink: string;
+};
+
+type DevSettings = {
+  geminiApiKey?: string;
+};
+
+type Toast = { id: string; kind: ToastKind; message: string };
+type CheckoutRequest = { planId: PlanId; cycle: BillingCycle };
+type EnquiryInput = Omit<Enquiry, "id" | "createdAt" | "adminEmailQueued" | "autoReplyQueued">;
+type TicketInput = Omit<Ticket, "id" | "createdAt" | "status" | "adminReply" | "repliedAt">;
+
+/* ── Seed Data ───────────────────────────────────────── */
+
+const seedAssignments: Assignment[] = [
+  {
+    id: "asg_1",
+    planId: "starter",
+    title: "Sarali Varisai Speed 1 & 2",
+    description: "Record yourself singing the basic Carnatic solfege scale (Sa Ri Ga Ma Pa Dha Ni Sa) ascending and descending in Speed 1 (1 note per beat) and Speed 2 (2 notes per beat). Keep a steady Shruthi backdrop.",
+    dueDate: "2026-06-01",
+    status: "pending",
+    videoUrl: "/Orchestral_South_11.mp4"
+  },
+  {
+    id: "asg_2",
+    planId: "starter",
+    title: "Vocal Pitch Matching Exercise",
+    description: "Sing along with the 3 Shruthi reference tones provided in the lesson recording and sustain Sa, Pa, and high Sa for 8 beats each without wobble.",
+    dueDate: "2026-06-08",
+    status: "pending"
+  },
+  {
+    id: "asg_3",
+    planId: "pro",
+    title: "Alankar & Thaat Bilawal Practice",
+    description: "Perform the first 4 Alankars in Thaat Bilawal (equivalent to Carnatic Shankarabharanam / major scale) set to Teental (16 beats). Submit recording.",
+    dueDate: "2026-06-03",
+    status: "pending",
+    videoUrl: "/Orchestral_South_Indian_instrume…_202605202331.mp4"
+  },
+  {
+    id: "asg_4",
+    planId: "pro",
+    title: "Guru Shishya Raga Phrasing",
+    description: "Listen to the classical phrasing loops of Raga Yaman and record your own improvisations (Aalap) using the specified rules of ascent (Arohana omit Sa and Pa).",
+    dueDate: "2026-06-10",
+    status: "pending"
+  },
+  {
+    id: "asg_5",
+    planId: "scale",
+    title: "Keyboard Synthesis & Accompaniment",
+    description: "Prepare the left-hand chord inversions for the Trinity Grade 3 classical performance piece, maintaining steady syncopated rhythm loops.",
+    dueDate: "2026-06-05",
+    status: "pending",
+    videoUrl: "/Orchestral_South_11.mp4"
+  },
+  {
+    id: "asg_6",
+    planId: "scale",
+    title: "Advanced Tala Mastery & Solkattu",
+    description: "Recite the Solkattu (rhythm syllables) for a double-speed Adi Tala structure (16 subdivisions per cycle) over 4 full cycles while keeping constant hand-clap counters.",
+    dueDate: "2026-06-12",
+    status: "pending"
+  }
+];
+
+const seedCalendarEvents: CalendarEvent[] = [
+  {
+    id: "evt_1",
+    planId: "starter",
+    title: "Vocal Basics & Raga Foundation",
+    time: "Saturdays at 10:00 AM IST",
+    instructor: "Guru Dr. R. Subramanian",
+    meetingLink: "https://meet.google.com/abc-defg-hij"
+  },
+  {
+    id: "evt_2",
+    planId: "starter",
+    title: "Interactive Pitch Review Session",
+    time: "Thursdays at 6:30 PM IST",
+    instructor: "Smt. Meera Krishnan",
+    meetingLink: "https://meet.google.com/xyz-uvwx-yza"
+  },
+  {
+    id: "evt_3",
+    planId: "pro",
+    title: "Guru Pro Hindustani Raga Yaman Aalap",
+    time: "Saturdays at 11:30 AM IST",
+    instructor: "Guru Dr. R. Subramanian",
+    meetingLink: "https://meet.google.com/mno-pqrs-tuv"
+  },
+  {
+    id: "evt_4",
+    planId: "pro",
+    title: "Tala Phrasing & Adi Tala Rhythm Desk",
+    time: "Tuesdays at 5:00 PM IST",
+    instructor: "Guru Sri K. R. Raman",
+    meetingLink: "https://meet.google.com/efg-hijk-lmn"
+  },
+  {
+    id: "evt_5",
+    planId: "scale",
+    title: "Advanced Concert Arangetram Coaching",
+    time: "Sundays at 9:00 AM IST",
+    instructor: "Guru Dr. R. Subramanian",
+    meetingLink: "https://meet.google.com/qrs-tuvw-xyz"
+  },
+  {
+    id: "evt_6",
+    planId: "scale",
+    title: "Keyboard Synthesis & Accompaniment Lab",
+    time: "Wednesdays at 7:00 PM IST",
+    instructor: "Sri Keith D'Souza",
+    meetingLink: "https://meet.google.com/hij-klmn-opq"
+  }
+];
+
+/* ── Data ─────────────────────────────────────────────── */
+
+const academyName = "Sai Music Academy";
+const routes: Route[] = ["home", "about", "features", "pricing", "faq", "contact", "login", "dashboard", "billing", "support", "terms", "privacy", "awards", "gallery"];
+
+const mainNav: { label: string; route: Route }[] = [
+  { label: "Home", route: "home" },
+  { label: "About", route: "about" },
+  { label: "Gallery", route: "gallery" },
+  { label: "Awards", route: "awards" },
+  { label: "Courses", route: "pricing" },
+  { label: "FAQ", route: "faq" },
+  { label: "Contact", route: "contact" },
+];
+
+const plans: Plan[] = [
+  {
+    id: "starter",
+    name: "Beginner",
+    tagline: "For new learners starting live online lessons.",
+    monthly: 1499,
+    yearly: 14990,
+    trialDays: 14,
+    features: ["1 live class per week", "Practice assignments", "Class reminders", "Basic progress tracking", "Email support"],
+  },
+  {
+    id: "pro",
+    name: "Intermediate",
+    tagline: "For serious students who need recordings and faster feedback.",
+    monthly: 2999,
+    yearly: 29990,
+    trialDays: 14,
+    highlight: true,
+    features: ["2 live classes per week", "Recorded class library", "Teacher feedback notes", "Reschedule controls", "Priority support"],
+  },
+  {
+    id: "scale",
+    name: "Advanced",
+    tagline: "For families, schools, and multi-student learning pods.",
+    monthly: 7499,
+    yearly: 74990,
+    trialDays: 7,
+    features: ["Multi-student dashboard", "Dedicated success manager", "Custom lesson plan", "Billing admin tools", "Support SLA"],
+  },
+];
+
+const featureList = [
+  { title: "Classical Roots", desc: "Carnatic and Hindustani traditions taught by Grade-certified masters with decades of concert experience." },
+  { title: "Keyboard & Western", desc: "Trinity/ABRSM-aligned keyboard and piano curriculum from beginner to Grade 8 performance level." },
+  { title: "Vocal Arts", desc: "Light classical, Bhajans, Film music, and Stage performance coaching for all voice types and age groups." },
+  { title: "Online & Offline", desc: "Flexible hybrid classes — attend from our studio or join live interactive sessions from home." },
+  { title: "Concert & Grading", desc: "Annual Arangetram, student recitals, and recognized exam preparation for Carnatic, Trinity, and ABRSM boards." },
+  { title: "All Ages Welcome", desc: "Dedicated tracks for children (5+), teens, adults, and senior learners — because music has no age." },
+];
+
+const faqList = [
+  { q: "Can I start with a trial?", a: "Yes. Each plan supports a trial window during checkout. You can add a coupon before payment confirmation." },
+  { q: "Which payment methods are supported?", a: "The checkout supports card, UPI, and wallet flows. It is structured for Stripe, Razorpay, or another secure gateway." },
+  { q: "Can I upgrade or downgrade later?", a: "Yes. The billing page lets signed-in users renew, cancel, upgrade, or downgrade with immediate state updates." },
+  { q: "Does the contact form send email?", a: "It validates every field, stores the enquiry, and queues admin and auto-reply email records. Connect the API hook to your provider for live delivery." },
+  { q: "Can a support agent take over chat?", a: "Yes. The chatbot collects handoff details and creates a support ticket that appears in the support and dashboard areas." },
+];
+
+const testimonials = [
+  {
+    quote: "Learning Carnatic vocal at Sai Music Academy changed how I experience silence. Every raga is a new conversation with myself.",
+    name: "Priya Raghunathan",
+    role: "Carnatic Vocal — Advanced",
+  },
+  {
+    quote: "My son's keyboard progress in 6 months was extraordinary. The teacher's patience and the structured Trinity grading path made all the difference.",
+    name: "Meena Krishnamurthy",
+    role: "Parent",
+  },
+  {
+    quote: "Started Hindustani at 52. The academy welcomed me without judgment and gave me a practice structure I could sustain alongside my career.",
+    name: "Suresh Nair",
+    role: "Adult Learner",
+  },
+];
+
+const courseCards = [
+  { tag: "Carnatic", title: "Vocal — Beginner", sub: "Ages 5+ · 3 months", fee: "₹1,200" },
+  { tag: "Keyboard", title: "Trinity Grade 1–3", sub: "Ages 8+ · 6 months", fee: "₹1,500" },
+  { tag: "Hindustani", title: "Vocal — Intermediate", sub: "All ages · 6 months", fee: "₹1,400" },
+  { tag: "Western", title: "Piano — ABRSM Path", sub: "Ages 10+ · 12 months", fee: "₹2,000" },
+  { tag: "Carnatic", title: "Veena — Foundation", sub: "Ages 12+ · 4 months", fee: "₹1,300" },
+  { tag: "Vocal", title: "Film & Light Classical", sub: "All ages · Ongoing", fee: "₹1,100" },
+  { tag: "Advanced", title: "Arangetram Prep", sub: "By assessment · 12mo", fee: "₹2,500" },
+  { tag: "Online", title: "Live Virtual Sessions", sub: "All ages · Flexible", fee: "₹900" },
+];
+
+const couponCodes: Record<string, number> = { SAI20: 20, TRIAL30: 30, YEARLY10: 10 };
+
+/* ── Helpers ──────────────────────────────────────────── */
+
+function uid(p = "id") { return `${p}_${Math.random().toString(36).slice(2, 10)}_${Date.now().toString(36)}`; }
+function sleep(ms: number) { return new Promise<void>((r) => window.setTimeout(r, ms)); }
+function routeHref(route: Route) { return route === "home" ? "#/" : `#/${route}`; }
+function getRouteFromHash(): Route { const raw = window.location.hash.replace(/^#\/?/, "") || "home"; return (routes as string[]).includes(raw) ? (raw as Route) : "home"; }
+function formatMoney(v: number) { return `INR ${v.toLocaleString("en-IN")}`; }
+function validateEmail(e: string) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e.trim()); }
+function addDays(d: Date, n: number) { const x = new Date(d); x.setDate(x.getDate() + n); return x.toISOString(); }
+function getPlan(id: PlanId) { return plans.find((p) => p.id === id) ?? plans[0]; }
+
+function useStoredState<T>(key: string, init: T) {
+  const [v, s] = useState<T>(() => { try { const r = window.localStorage.getItem(key); return r ? (JSON.parse(r) as T) : init; } catch { return init; } });
+  useEffect(() => { window.localStorage.setItem(key, JSON.stringify(v)); }, [key, v]);
+  return [v, s] as const;
+}
+
+function useRoute() {
+  const [route, setRoute] = useState<Route>(getRouteFromHash);
+  useEffect(() => { const h = () => setRoute(getRouteFromHash()); window.addEventListener("hashchange", h); return () => window.removeEventListener("hashchange", h); }, []);
+  const navigate = useCallback((r: Route) => { window.location.hash = routeHref(r); setRoute(r); window.scrollTo({ top: 0, behavior: "smooth" }); }, []);
+  return [route, navigate] as const;
+}
+
+function useReveal() {
+  useEffect(() => {
+    const els = Array.from(document.querySelectorAll<HTMLElement>("[data-reveal]"));
+    const obs = new IntersectionObserver((entries) => entries.forEach((e) => { if (e.isIntersecting) { e.target.classList.add("is-visible"); obs.unobserve(e.target); } }), { threshold: 0.15 });
+    els.forEach((el) => obs.observe(el));
+    return () => obs.disconnect();
+  }, []);
+}
+
+/* ── SVG Logo ─────────────────────────────────────────── */
+
+function LogoSVG({ size = 48 }: { size?: number }) {
+  return (
+    <svg viewBox="0 0 48 48" fill="none" width={size} height={size}>
+      <circle cx="24" cy="24" r="23" stroke="#D4A853" strokeWidth="1" />
+      <circle cx="24" cy="24" r="20" fill="rgba(212,168,83,0.08)" />
+      <path d="M24 8 C24 8 20 12 20 16 C20 20 22 21 24 22 C26 23 28 25 28 28 C28 32 26 35 24 36 C22 37 20 37 19 35.5" stroke="#D4A853" strokeWidth="1.5" strokeLinecap="round" fill="none" />
+      <path d="M24 22 C27 22 30 24 30 27 C30 30 28 32 24 32 C20 32 18 30 18 27 C18 25 19 23.5 21 23" stroke="#D4A853" strokeWidth="1.2" strokeLinecap="round" fill="none" />
+      <circle cx="21" cy="35" r="1.5" fill="#D4A853" />
+      <path d="M32 20 C34 22 34 26 32 28" stroke="#D4A853" strokeWidth="1" strokeLinecap="round" fill="none" opacity=".6" />
+      <path d="M35 17 C38.5 21 38.5 27 35 31" stroke="#D4A853" strokeWidth="1" strokeLinecap="round" fill="none" opacity=".35" />
+      <circle cx="24" cy="40" r="1" fill="rgba(212,168,83,0.5)" />
+      <circle cx="16" cy="10" r=".6" fill="rgba(212,168,83,0.4)" />
+      <circle cx="32" cy="10" r=".6" fill="rgba(212,168,83,0.4)" />
+    </svg>
+  );
+}
+
+/* ── Particle Canvas ──────────────────────────────────── */
+
+function ParticleCanvas() {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    const resize = () => { canvas.width = window.innerWidth; canvas.height = window.innerHeight; };
+    resize();
+    window.addEventListener("resize", resize);
+    const ps: { x: number; y: number; vx: number; vy: number; r: number; o: number }[] = [];
+    for (let i = 0; i < 50; i++) ps.push({ x: Math.random() * canvas.width, y: Math.random() * canvas.height, vx: (Math.random() - 0.5) * 0.3, vy: (Math.random() - 0.5) * 0.3, r: Math.random() * 1.5 + 0.5, o: Math.random() * 0.4 + 0.05 });
+    let raf = 0;
+    const draw = () => {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ps.forEach((p) => {
+        p.x += p.vx; p.y += p.vy;
+        if (p.x < 0) p.x = canvas.width; if (p.x > canvas.width) p.x = 0;
+        if (p.y < 0) p.y = canvas.height; if (p.y > canvas.height) p.y = 0;
+        ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2); ctx.fillStyle = `rgba(212,168,83,${p.o})`; ctx.fill();
+      });
+      for (let i = 0; i < ps.length; i++) for (let j = i + 1; j < ps.length; j++) {
+        const d = Math.hypot(ps[i].x - ps[j].x, ps[i].y - ps[j].y);
+        if (d < 120) { ctx.beginPath(); ctx.moveTo(ps[i].x, ps[i].y); ctx.lineTo(ps[j].x, ps[j].y); ctx.strokeStyle = `rgba(212,168,83,${0.12 * (1 - d / 120)})`; ctx.lineWidth = 0.5; ctx.stroke(); }
+      }
+      raf = requestAnimationFrame(draw);
+    };
+    draw();
+    return () => { cancelAnimationFrame(raf); window.removeEventListener("resize", resize); };
+  }, []);
+  return <canvas ref={canvasRef} className="particles-canvas" />;
+}
+
+/* ── Counter Animation ────────────────────────────────── */
+
+function StatCounter({ target, suffix = "+" }: { target: number; suffix?: string }) {
+  const ref = useRef<HTMLSpanElement>(null);
+  const [val, setVal] = useState(0);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const obs = new IntersectionObserver(([e]) => {
+      if (!e.isIntersecting) return;
+      let c = 0;
+      const step = target / 60;
+      const timer = setInterval(() => { c += step; if (c >= target) { c = target; clearInterval(timer); } setVal(Math.round(c)); }, 25);
+      obs.unobserve(el);
+    }, { threshold: 0.5 });
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [target]);
+  return <span ref={ref} className="stat-num">{target >= 100 ? `${val}${suffix}` : val}</span>;
+}
+
+/* ── Toast ────────────────────────────────────────────── */
+
+function ToastList({ toasts }: { toasts: Toast[] }) {
+  return (
+    <div className="toast-stack" aria-live="polite">
+      {toasts.map((t) => <div key={t.id} className={`toast toast-${t.kind}`}>{t.message}</div>)}
+    </div>
+  );
+}
+
+/* ── Section Heading ──────────────────────────────────── */
+
+function SectionLabel({ children }: { children: string }) {
+  return <div className="section-label"><span>{children}</span></div>;
+}
+
+/* ── Header ───────────────────────────────────────────── */
+
+function Header({ route, user, navigate }: { route: Route; user: User | null; navigate: (r: Route) => void }) {
+  const [scrolled, setScrolled] = useState(false);
+  useEffect(() => { const h = () => setScrolled(window.scrollY > 60); window.addEventListener("scroll", h, { passive: true }); return () => window.removeEventListener("scroll", h); }, []);
+  return (
+    <nav className={`site-nav ${scrolled ? "nav-scrolled" : ""}`}>
+      <a className="nav-logo" href={routeHref("home")}>
+        <LogoSVG size={48} />
+        <div className="nav-brand">
+          <span className="nav-brand-main">Sai Music</span>
+          <span className="nav-brand-sub">Academy</span>
+        </div>
+      </a>
+      <div className="nav-links hidden lg:flex">
+        {mainNav.map((item) => (
+          <a key={item.route} className={route === item.route ? "nav-link active" : "nav-link"} href={routeHref(item.route)}>{item.label}</a>
+        ))}
+        {user ? <a className="nav-link" href={routeHref("dashboard")}>Dashboard</a> : <a className="nav-link" href={routeHref("login")}>Login</a>}
+        <button className="nav-cta" onClick={() => navigate("pricing")}>Enroll Now</button>
+      </div>
+    </nav>
+  );
+}
+
+/* ── Hero ─────────────────────────────────────────────── */
+
+function Hero({ navigate, openCheckout, user }: { navigate: (r: Route) => void; openCheckout: (planId: PlanId, cycle: BillingCycle) => void; user: User | null }) {
+  const [tilt, setTilt] = useState({ x: 0, y: 0 });
+  const [scrollY, setScrollY] = useState(0);
+  const [isMobile, setIsMobile] = useState(true);
+
+  useEffect(() => {
+    setIsMobile(window.innerWidth < 768);
+    const handleResize = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener("resize", handleResize);
+    const handleMouse = (e: MouseEvent) => {
+      if (window.innerWidth < 768) return;
+      const rx = (e.clientX / window.innerWidth - 0.5) * 30; // -15 to +15 deg drift
+      const ry = (e.clientY / window.innerHeight - 0.5) * 30;
+      setTilt({ x: rx, y: ry });
+    };
+    const handleScroll = () => {
+      setScrollY(window.scrollY);
+    };
+    window.addEventListener("mousemove", handleMouse, { passive: true });
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    return () => {
+      window.removeEventListener("resize", handleResize);
+      window.removeEventListener("mousemove", handleMouse);
+      window.removeEventListener("scroll", handleScroll);
+    };
+  }, []);
+
+  const handleScrollDown = () => {
+    const nextSection = document.querySelector(".stats-strip");
+    if (nextSection) {
+      nextSection.scrollIntoView({ behavior: "smooth" });
+    } else {
+      window.scrollTo({ top: window.innerHeight, behavior: "smooth" });
+    }
+  };
+
+  // Parallax offsets
+  const getStyle = (coef: number, baseZ = 0) => {
+    if (isMobile) return {};
+    const tx = tilt.x * coef;
+    const ty = tilt.y * coef;
+    const scrollOffset = scrollY * coef * 0.8;
+    return {
+      transform: `translate3d(${tx}px, ${ty + scrollOffset}px, ${baseZ}px) rotateX(${-ty * 0.05}deg) rotateY(${tx * 0.05}deg)`,
+      opacity: Math.max(0, 1 - scrollY / 600),
+      transition: "transform 0.1s cubic-bezier(0.25, 1, 0.5, 1)",
+    };
+  };
+
+  return (
+    <section className="relative h-screen w-full overflow-hidden bg-black perspective-1000 preserve-3d">
+      {/* Background video with enhanced cinematic color grading */}
+      <video
+        className="absolute inset-0 w-full h-full object-cover will-change-transform"
+        autoPlay
+        loop
+        muted
+        playsInline
+        preload="auto"
+        poster="/images/sai-music-academy-hero.jpg"
+        src="/hero-music.mp4"
+        style={{
+          transform: isMobile ? undefined : `scale(${1 + scrollY * 0.0003}) translateY(${scrollY * 0.08}px)`,
+          filter: "contrast(1.22) brightness(0.44) saturate(0.85)",
+        }}
+      />
+
+      {/* Premium Cinematic Radial Vignette & Scanline Overlay */}
+      <div 
+        className="absolute inset-0 pointer-events-none z-0" 
+        style={{
+          background: "radial-gradient(circle at 50% 50%, transparent 20%, rgba(0, 0, 0, 0.72) 90%)",
+        }}
+      />
+      <div 
+        className="absolute inset-0 pointer-events-none z-0 opacity-[0.14]"
+        style={{
+          backgroundImage: "linear-gradient(rgba(255, 255, 255, 0.08) 50%, rgba(0, 0, 0, 0.16) 50%)",
+          backgroundSize: "100% 4px",
+        }}
+      />
+
+
+      {/* Floating pill-shaped navbar */}
+      <nav className="fixed z-50 px-4 md:px-10 pt-6 top-0 left-0 right-0 flex items-center justify-between gap-4 pointer-events-auto">
+        {/* Left pill */}
+        <div 
+          className="flex items-center gap-2 bg-neutral-900/90 backdrop-blur-md rounded-full pl-3 pr-4 py-2 md:pl-4 md:pr-6 md:py-2.5 border border-white/10 shadow-lg cursor-pointer hover:bg-neutral-800/90 transition-all" 
+          onClick={() => navigate("home")}
+        >
+          <LogoSVG size={22} />
+          <span className="text-white text-xs md:text-sm font-semibold tracking-wide uppercase">sai music</span>
+        </div>
+
+        {/* Center pill */}
+        <div className="hidden md:flex items-center gap-1 bg-neutral-900/90 backdrop-blur-md rounded-full px-3 py-2 border border-white/10 shadow-lg">
+          <button onClick={() => navigate("home")} className="text-neutral-300 hover:text-white transition-colors text-xs uppercase tracking-wider px-4 py-2 rounded-full cursor-pointer bg-transparent border-none">home</button>
+          <button onClick={handleScrollDown} className="text-neutral-300 hover:text-white transition-colors text-xs uppercase tracking-wider px-4 py-2 rounded-full cursor-pointer bg-transparent border-none">about</button>
+          <button onClick={() => navigate("pricing")} className="text-neutral-300 hover:text-white transition-colors text-xs uppercase tracking-wider px-4 py-2 rounded-full cursor-pointer bg-transparent border-none">courses</button>
+          <button onClick={() => navigate("faq")} className="text-neutral-300 hover:text-white transition-colors text-xs uppercase tracking-wider px-4 py-2 rounded-full cursor-pointer bg-transparent border-none">faq</button>
+          <button onClick={() => navigate("contact")} className="text-neutral-300 hover:text-white transition-colors text-xs uppercase tracking-wider px-4 py-2 rounded-full cursor-pointer bg-transparent border-none">contact</button>
+          {user ? (
+            <button onClick={() => navigate("dashboard")} className="text-neutral-300 hover:text-white transition-colors text-xs uppercase tracking-wider px-4 py-2 rounded-full cursor-pointer bg-transparent border-none">dashboard</button>
+          ) : (
+            <button onClick={() => navigate("login")} className="text-neutral-300 hover:text-white transition-colors text-xs uppercase tracking-wider px-4 py-2 rounded-full cursor-pointer bg-transparent border-none">login</button>
+          )}
+        </div>
+
+        {/* Right button */}
+        <button
+          onClick={() => navigate("pricing")}
+          className="bg-white text-black text-xs font-semibold uppercase tracking-wider rounded-full px-4 py-2.5 md:px-6 md:py-3 hover:bg-neutral-200 transition-colors cursor-pointer border-none shadow-md"
+        >
+          enroll now
+        </button>
+      </nav>
+
+      {/* Foreground content wrapper */}
+      <div className="relative h-full w-full pointer-events-none z-10 preserve-3d flex flex-col justify-center px-6 md:px-16 lg:px-24">
+        <div className="w-full max-w-7xl mx-auto flex flex-col gap-4 md:gap-8 justify-center h-full pt-20 md:pt-24 pb-12">
+          
+          {/* Staggered Row 1: "where" */}
+          <div className="w-full flex justify-start">
+            <h1
+              className="hero-title text-white font-medium text-[13vw] md:text-[8.5vw] xl:text-[8vw] will-change-transform uppercase select-none leading-[0.9] tracking-tighter"
+              style={getStyle(0.35, 50)}
+            >
+              where
+            </h1>
+          </div>
+
+          {/* Staggered Row 2: "music" + Description side-by-side */}
+          <div className="w-full flex flex-col md:flex-row md:items-center justify-between gap-6 md:gap-12">
+            {/* Description on left, ordered second on mobile */}
+            <p
+              className="text-white/80 text-[14px] md:text-[16px] leading-relaxed max-w-[320px] md:max-w-[280px] will-change-transform font-light select-none order-2 md:order-1 self-start md:self-center md:pl-2"
+              style={getStyle(-0.15, 10)}
+            >
+              Rooted in classical tradition. Shaped for the modern soul. Carnatic · Hindustani · Western · Keyboard · Vocal
+            </p>
+
+            {/* "music" on right, ordered first on mobile */}
+            <h1
+              className="hero-title text-white font-medium text-[13vw] md:text-[8.5vw] xl:text-[8vw] md:text-right will-change-transform uppercase select-none leading-[0.9] tracking-tighter order-1 md:order-2"
+              style={getStyle(-0.25, 30)}
+            >
+              music
+            </h1>
+          </div>
+
+          {/* Staggered Row 3: "awakens" */}
+          <div className="w-full flex justify-start md:justify-center lg:justify-start lg:pl-[12%]">
+            <h1
+              className="hero-title text-white font-medium text-[13vw] md:text-[8.5vw] xl:text-[8vw] will-change-transform uppercase select-none leading-[0.9] tracking-tighter"
+              style={getStyle(0.45, 70)}
+            >
+              awakens
+            </h1>
+          </div>
+
+        </div>
+
+        {/* Floating stats block - top-right (absolute edges, safe from flex content) */}
+        <div
+          className="hidden xl:flex absolute right-16 top-[18%] flex-col items-end will-change-transform select-none"
+          style={getStyle(0.2, 20)}
+        >
+          <div className="flex items-center gap-3 justify-end">
+            <div className="hidden xl:block h-px w-16 bg-white/30 rotate-[20deg]" />
+            <span className="text-4xl font-medium tracking-tight text-white">14+</span>
+          </div>
+          <span className="text-xs text-white/60 mt-0.5 text-right">Years of Legacy</span>
+        </div>
+
+        {/* Floating stats block - bottom-left (absolute edges, safe from flex content) */}
+        <div
+          className="hidden xl:flex absolute left-16 bottom-[12%] flex-col items-start will-change-transform select-none"
+          style={getStyle(-0.2, 15)}
+        >
+          <div className="flex items-center gap-3 justify-start">
+            <span className="text-white text-4xl font-medium tracking-tight">2400+</span>
+            <div className="hidden xl:block h-px w-16 bg-white/30 rotate-[-20deg]" />
+          </div>
+          <span className="text-xs text-white/60 mt-0.5">Students Trained</span>
+        </div>
+
+        {/* Floating stats block - bottom-right (absolute edges, safe from flex content) */}
+        <div
+          className="hidden xl:flex absolute right-16 bottom-[12%] flex-col items-end will-change-transform select-none"
+          style={getStyle(0.3, 25)}
+        >
+          <div className="flex items-center gap-3 justify-end">
+            <div className="hidden xl:block h-px w-16 bg-white/30 rotate-[-20deg]" />
+            <span className="text-4xl font-medium tracking-tight text-white">12</span>
+          </div>
+          <span className="text-xs text-white/60 mt-0.5 text-right">Courses Offered</span>
+        </div>
+      </div>
+
+      {/* Bottom gradient overlay */}
+      <div className="pointer-events-none absolute bottom-0 left-0 right-0 h-48 bg-gradient-to-b from-transparent to-black z-10" />
+    </section>
+  );
+}
+
+/* ── Stats Strip ──────────────────────────────────────── */
+
+function StatsStrip() {
+  return (
+    <div className="stats-strip">
+      <div><StatCounter target={14} suffix="+" /><div className="stat-label">Years of Legacy</div></div>
+      <div><StatCounter target={2400} suffix="+" /><div className="stat-label">Students Trained</div></div>
+      <div><StatCounter target={12} /><div className="stat-label">Courses Offered</div></div>
+      <div><StatCounter target={98} suffix="%" /><div className="stat-label">Satisfaction</div></div>
+    </div>
+  );
+}
+
+/* ── About Section ────────────────────────────────────── */
+
+function AboutSection() {
+  return (
+    <section className="section" id="about" data-reveal>
+      <SectionLabel>Our Philosophy</SectionLabel>
+      <div className="about-grid">
+        <div>
+          <h2 className="section-title">Music is not just learned.<br /><em>It is awakened.</em></h2>
+          <p className="section-copy">At Sai Music Academy, we believe every student carries an innate rhythm. Our masters — trained in the deepest classical traditions — guide that rhythm toward expression, discipline, and joy.</p>
+          <p className="section-copy mt-4">From Carnatic ragas to Western harmony, from keyboard basics to advanced vocal performance — our curriculum flows from the root, adapting to every age and aspiration.</p>
+        </div>
+        <div className="about-staff-svg">
+          <svg viewBox="0 0 400 300" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <defs><linearGradient id="gStaff" x1="0" y1="0" x2="400" y2="0"><stop offset="0%" stopColor="#D4A853" stopOpacity="0" /><stop offset="30%" stopColor="#D4A853" stopOpacity=".5" /><stop offset="70%" stopColor="#D4A853" stopOpacity=".5" /><stop offset="100%" stopColor="#D4A853" stopOpacity="0" /></linearGradient></defs>
+            <line x1="20" y1="90" x2="380" y2="90" stroke="url(#gStaff)" strokeWidth=".8" />
+            <line x1="20" y1="110" x2="380" y2="110" stroke="url(#gStaff)" strokeWidth=".8" />
+            <line x1="20" y1="130" x2="380" y2="130" stroke="url(#gStaff)" strokeWidth=".8" />
+            <line x1="20" y1="150" x2="380" y2="150" stroke="url(#gStaff)" strokeWidth=".8" />
+            <line x1="20" y1="170" x2="380" y2="170" stroke="url(#gStaff)" strokeWidth=".8" />
+            <path d="M55 185 C55 185 52 175 52 160 C52 130 60 115 68 100 C76 85 78 70 74 58 C70 46 60 42 54 48 C48 54 46 66 50 76 C54 86 64 90 72 88" stroke="#D4A853" strokeWidth="1.8" fill="none" strokeLinecap="round" opacity=".8" />
+            <circle cx="58" cy="182" r="6" fill="none" stroke="#D4A853" strokeWidth="1.5" opacity=".8" />
+            <line x1="58" y1="176" x2="58" y2="88" stroke="#D4A853" strokeWidth="1.5" opacity=".8" />
+            <ellipse cx="130" cy="130" rx="8" ry="6" fill="#D4A853" opacity=".6" transform="rotate(-15 130 130)" />
+            <line x1="138" y1="130" x2="138" y2="85" stroke="#D4A853" strokeWidth="1.2" opacity=".6" />
+            <ellipse cx="185" cy="110" rx="8" ry="6" fill="#D4A853" opacity=".5" transform="rotate(-15 185 110)" />
+            <line x1="193" y1="110" x2="193" y2="65" stroke="#D4A853" strokeWidth="1.2" opacity=".5" />
+            <ellipse cx="240" cy="150" rx="8" ry="6" fill="#D4A853" opacity=".7" transform="rotate(-15 240 150)" />
+            <line x1="248" y1="150" x2="248" y2="105" stroke="#D4A853" strokeWidth="1.2" opacity=".7" />
+            <ellipse cx="295" cy="120" rx="8" ry="6" fill="#D4A853" opacity=".45" transform="rotate(-15 295 120)" />
+            <line x1="303" y1="120" x2="303" y2="75" stroke="#D4A853" strokeWidth="1.2" opacity=".45" />
+            <ellipse cx="340" cy="140" rx="8" ry="6" fill="#D4A853" opacity=".55" transform="rotate(-15 340 140)" />
+            <line x1="348" y1="140" x2="348" y2="95" stroke="#D4A853" strokeWidth="1.2" opacity=".55" />
+            <text x="200" y="240" textAnchor="middle" fontSize="48" fill="rgba(212,168,83,0.15)" fontFamily="serif">ॐ</text>
+            <path d="M120 210 C145 195 165 225 190 210 C215 195 235 225 260 210 C285 195 305 225 330 210" stroke="rgba(212,168,83,0.25)" strokeWidth="1" fill="none" />
+          </svg>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/* ── Features Section ─────────────────────────────────── */
+
+function FeaturesSection() {
+  return (
+    <section className="section" id="features" data-reveal>
+      <SectionLabel>What We Offer</SectionLabel>
+      <h2 className="section-title">Choose Your <em>Musical Path</em></h2>
+      <div className="features-grid">
+        {featureList.map((f, i) => (
+          <div key={f.title} className="feat-card" data-reveal>
+            <div className="feat-num">{String(i + 1).padStart(2, "0")}</div>
+            <div className="feat-title">{f.title}</div>
+            <p className="feat-desc">{f.desc}</p>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+/* ── Courses Marquee ──────────────────────────────────── */
+
+function CoursesMarquee() {
+  return (
+    <section className="courses-section" id="courses" data-reveal>
+      <div className="courses-inner">
+        <SectionLabel>Our Curriculum</SectionLabel>
+        <h2 className="section-title">Explore <em>Courses</em></h2>
+      </div>
+      <div className="courses-marquee">
+        <div className="courses-track">
+          {[...courseCards, ...courseCards].map((c, i) => (
+            <div key={i} className="course-card">
+              <span className="course-tag">{c.tag}</span>
+              <div className="course-title">{c.title}</div>
+              <div className="course-sub">{c.sub}</div>
+              <div className="course-fee">{c.fee} <span>/mo</span></div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/* ── Testimonials ─────────────────────────────────────── */
+
+function TestimonialsSection() {
+  const [active, setActive] = useState(0);
+  useEffect(() => { const t = setInterval(() => setActive((p) => (p + 1) % testimonials.length), 5000); return () => clearInterval(t); }, []);
+  const t = testimonials[active];
+  return (
+    <section className="section testimonials-section" id="testimonials" data-reveal>
+      <div className="testimonials-layout">
+        <div>
+          <SectionLabel>Student Stories</SectionLabel>
+          <blockquote className="testimonial-quote">"{t.quote}"</blockquote>
+          <div className="testimonial-author">
+            <div className="author-avatar">{t.name.split(" ").map((w) => w[0]).join("")}</div>
+            <div className="author-info"><strong>{t.name}</strong><span>{t.role}</span></div>
+          </div>
+        </div>
+        <div className="testi-cards">
+          {testimonials.map((tc, i) => (
+            <button key={i} className={`testi-mini ${i === active ? "is-active" : ""}`} onClick={() => setActive(i)}>
+              <div className="stars">★★★★★</div>
+              <p>"{tc.quote.slice(0, 100)}..."</p>
+              <div className="testi-mini-author">{tc.name}</div>
+            </button>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/* ── CTA ──────────────────────────────────────────────── */
+
+function CTASection({ navigate }: { navigate: (r: Route) => void }) {
+  return (
+    <section className="footer-cta" id="contact" data-reveal>
+      <div className="deco-ring" style={{ width: 800, height: 800, top: "50%", left: "50%", transform: "translate(-50%,-50%)", opacity: 0.4 }} />
+      <div className="deco-ring" style={{ width: 500, height: 500, top: "50%", left: "50%", transform: "translate(-50%,-50%)", opacity: 0.3 }} />
+      <div className="cta-inner">
+        <SectionLabel>Begin Your Journey</SectionLabel>
+        <h2 className="cta-title">Your first note is<br /><em>waiting to be played.</em></h2>
+        <p className="cta-copy">Join our next intake in Hosur or online. Trial class available. No prior experience needed.</p>
+        <div className="cta-actions">
+          <button className="cta-btn" onClick={() => navigate("pricing")}>
+            <svg className="btn-shape" viewBox="0 0 184 65" fill="none" preserveAspectRatio="none"><path d="M12 0 H172 L184 32.5 L172 65 H12 L0 32.5 Z" fill="#D4A853" /></svg>
+            <span className="cta-btn-label">Enroll Now</span>
+          </button>
+          <a className="cta-secondary" href="tel:7200747726">Call Us Today</a>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/* ── Footer ───────────────────────────────────────────── */
+
+function Footer() {
+  return (
+    <footer className="site-footer">
+      <div className="footer-inner">
+        <div className="footer-brand-col">
+          <a className="nav-logo" href={routeHref("home")}><LogoSVG size={40} /><div className="nav-brand"><span className="nav-brand-main">Sai Music</span><span className="nav-brand-sub">Academy</span></div></a>
+          <div className="footer-hours">
+            <strong>Open Hours</strong>
+            <p>Monday - Sunday: 09 AM - 10 PM</p>
+          </div>
+          <div className="footer-contact">
+            <strong>Phone:</strong> 7200747726 / 9952183181<br />
+            <strong>Email:</strong> ganeshbabu0704@gmail.com
+          </div>
+        </div>
+        <div className="footer-links-col">
+          <div className="footer-col">
+            <h4>Academy</h4>
+            {["about", "gallery", "awards", "features"].map((r) => <a key={r} className="footer-link" href={routeHref(r as Route)}>{r}</a>)}
+          </div>
+          <div className="footer-col">
+            <h4>Platform</h4>
+            {["pricing", "login", "dashboard", "billing"].map((r) => <a key={r} className="footer-link" href={routeHref(r as Route)}>{r}</a>)}
+          </div>
+          <div className="footer-col">
+            <h4>Legal</h4>
+            {["contact", "support", "terms", "privacy"].map((r) => <a key={r} className="footer-link" href={routeHref(r as Route)}>{r}</a>)}
+          </div>
+        </div>
+      </div>
+      <div className="footer-bottom">
+        <p>© 2026 {academyName} · Hosur, Tamil Nadu · All Rights Reserved</p>
+        <div className="footer-soc">
+          <a href="#">Instagram</a>
+          <a href="#">YouTube</a>
+          <a href="#">WhatsApp</a>
+        </div>
+      </div>
+    </footer>
+  );
+}
+
+/* ── PageShell ────────────────────────────────────────── */
+
+function PageShell({ kicker, title, children }: { kicker: string; title: string; children: React.ReactNode }) {
+  return (
+    <main className="page-shell">
+      <div className="mx-auto max-w-7xl px-4 py-28 sm:px-6 lg:px-8">
+        <SectionLabel>{kicker}</SectionLabel>
+        <h2 className="section-title">{title}</h2>
+        <div className="mt-10">{children}</div>
+      </div>
+    </main>
+  );
+}
+
+function Field({ label, error, wide = false, children }: { label: string; error?: string; wide?: boolean; children: React.ReactNode }) {
+  return (
+    <label className={`field ${wide ? "field-wide" : ""}`}>
+      <span>{label}</span>
+      {children}
+      {error ? <em>{error}</em> : null}
+    </label>
+  );
+}
+
+/* ── About Page ───────────────────────────────────────── */
+
+function AboutPage() {
+  return (
+    <PageShell kicker="About" title="A live music academy for every learner.">
+      <div className="about-page-layout">
+        <div className="prose-block">
+          <p>Sai Music Academy is a trusted online and offline music learning academy based in Shanthapuram, Hosur, Tamil Nadu. We provide one-to-one live music lessons, guided practice, subscriptions, support, and student communication through a modern web platform.</p>
+          <p>Our experienced gurus teach Carnatic vocals, Hindustani vocals, guitar, keyboard, violin, piano, mridangam, tabla, flute, drums, saxophone, and more.</p>
+          <p>The platform keeps users, subscriptions, enquiries, support tickets, and chatbot logs in persistent state so a backend team can connect secure APIs without redesigning the product experience.</p>
+        </div>
+        <div className="about-cards-grid">
+          <div className="about-card"><h3>Open Hours</h3><p>Monday - Sunday</p><p className="about-highlight">09 AM - 10 PM</p><p>Classes available throughout the day with flexible scheduling.</p></div>
+          <div className="about-card"><h3>Contact & Email</h3><p><strong>Phone:</strong> 7200747726 / 9952183181</p><p><strong>Email:</strong> ganeshbabu0704@gmail.com</p></div>
+          <div className="about-card"><h3>Address</h3><p>Sai Music Academy</p><p>QR6F+598, Shanthapuram</p><p>Hosur, Tamil Nadu 635126</p></div>
+        </div>
+      </div>
+    </PageShell>
+  );
+}
+
+/* ── Features Page ────────────────────────────────────── */
+
+function FeaturesPage() {
+  return (
+    <PageShell kicker="Features" title="Production-grade music education flows.">
+      <div className="features-grid">
+        {featureList.map((f, i) => (
+          <div key={f.title} className="feat-card"><div className="feat-num">{String(i + 1).padStart(2, "0")}</div><div className="feat-title">{f.title}</div><p className="feat-desc">{f.desc}</p></div>
+        ))}
+      </div>
+    </PageShell>
+  );
+}
+
+/* ── Pricing Page ─────────────────────────────────────── */
+
+function PricingPage({ openCheckout }: { openCheckout: (planId: PlanId, cycle: BillingCycle) => void }) {
+  const [cycle, setCycle] = useState<BillingCycle>("monthly");
+  return (
+    <PageShell kicker="Pricing" title="Choose monthly flexibility or yearly savings.">
+      <div className="billing-toggle">
+        <button className={cycle === "monthly" ? "active" : ""} onClick={() => setCycle("monthly")}>Monthly</button>
+        <button className={cycle === "yearly" ? "active" : ""} onClick={() => setCycle("yearly")}>Yearly</button>
+      </div>
+      <div className="pricing-grid mt-10">
+        {plans.map((plan) => {
+          const price = cycle === "monthly" ? plan.monthly : plan.yearly;
+          return (
+            <article key={plan.id} className={`pricing-card ${plan.highlight ? "highlighted" : ""}`}>
+              <div><p className="plan-tag">{plan.trialDays}-day trial</p><h3 className="plan-name">{plan.name}</h3><p className="plan-copy">{plan.tagline}</p><p className="plan-price">{formatMoney(price)} <span>/{cycle === "monthly" ? "mo" : "yr"}</span></p><ul>{plan.features.map((f) => <li key={f}>{f}</li>)}</ul></div>
+              <button className="cta-btn pricing-cta" onClick={() => openCheckout(plan.id, cycle)}>
+                <svg className="btn-shape" viewBox="0 0 184 65" fill="none" preserveAspectRatio="none"><path d="M12 0 H172 L184 32.5 L172 65 H12 L0 32.5 Z" fill={plan.highlight ? "#D4A853" : "rgba(212,168,83,0.2)"} /></svg>
+                <span className="cta-btn-label">Start {plan.name}</span>
+              </button>
+            </article>
+          );
+        })}
+      </div>
+    </PageShell>
+  );
+}
+
+/* ── FAQ Page ─────────────────────────────────────────── */
+
+function FAQPage() {
+  return (
+    <PageShell kicker="FAQ" title="Answers for subscriptions, payment, chatbot, and support.">
+      <div className="faq-list">{faqList.map((f) => <details key={f.q}><summary>{f.q}</summary><p>{f.a}</p></details>)}</div>
+    </PageShell>
+  );
+}
+
+/* ── Contact Page ─────────────────────────────────────── */
+
+function ContactPage({ createEnquiry }: { createEnquiry: (input: EnquiryInput) => Promise<Enquiry> }) {
+  const [form, setForm] = useState({ name: "", email: "", phone: "", subject: "", message: "" });
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [loading, setLoading] = useState(false);
+  const [confirmation, setConfirmation] = useState<string | null>(null);
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    const err: Record<string, string> = {};
+    if (form.name.trim().length < 2) err.name = "Enter your name.";
+    if (!validateEmail(form.email)) err.email = "Enter a valid email.";
+    if (form.phone.trim().length < 7) err.phone = "Enter a valid phone number.";
+    if (form.subject.trim().length < 3) err.subject = "Enter a subject.";
+    if (form.message.trim().length < 12) err.message = "Message must be at least 12 characters.";
+    setErrors(err); if (Object.keys(err).length) return;
+    setLoading(true);
+    const eq = await createEnquiry({ ...form, source: "contact" });
+    setLoading(false);
+    setConfirmation(`Enquiry ${eq.id} submitted. Admin notification and user auto-reply are queued.`);
+    setForm({ name: "", email: "", phone: "", subject: "", message: "" });
+  };
+  return (
+    <PageShell kicker="Contact" title="Send an enquiry with validation, storage, and email queue states.">
+      <form className="form-grid" onSubmit={submit} noValidate>
+        <Field label="Name" error={errors.name}><input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></Field>
+        <Field label="Email" error={errors.email}><input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} /></Field>
+        <Field label="Phone" error={errors.phone}><input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} /></Field>
+        <Field label="Subject" error={errors.subject}><input value={form.subject} onChange={(e) => setForm({ ...form, subject: e.target.value })} /></Field>
+        <Field label="Message" error={errors.message} wide><textarea rows={5} value={form.message} onChange={(e) => setForm({ ...form, message: e.target.value })} /></Field>
+        <div className="sm:col-span-2">
+          <button className="nav-cta" type="submit" disabled={loading}>{loading ? "Sending..." : "Send enquiry"}</button>
+          {confirmation ? <p className="success-text">{confirmation}</p> : null}
+        </div>
+      </form>
+    </PageShell>
+  );
+}
+
+/* ── Auth Page ────────────────────────────────────────── */
+
+function AuthPage({ users, setUsers, setUser, pushToast }: { users: User[]; setUsers: (fn: (u: User[]) => User[]) => void; setUser: (u: User) => void; pushToast: (k: ToastKind, m: string) => void }) {
+  const [mode, setMode] = useState<"login" | "signup" | "forgot">("login");
+  const [form, setForm] = useState({ name: "", email: "", phone: "", password: "" });
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const fillCredentials = (role: "admin" | "student") => {
+    if (role === "admin") {
+      setForm({ name: "Academy Admin", email: "admin@saimusicacademy.com", phone: "+91 98765 43210", password: "admin123" });
+      setMode("login");
+    } else {
+      setForm({ name: "Ramesh Kumar", email: "student@saimusicacademy.com", phone: "+91 98450 12345", password: "student123" });
+      setMode("login");
+    }
+  };
+
+  const submit = async (e: FormEvent) => {
+    e.preventDefault(); setError("");
+    const emailLower = form.email.trim().toLowerCase();
+    
+    if (!validateEmail(form.email)) { setError("Enter a valid email address."); return; }
+    if (mode !== "forgot" && form.password.length < 6) { setError("Password must be at least 6 characters."); return; }
+    if (mode === "signup" && form.name.trim().length < 2) { setError("Enter your full name."); return; }
+    
+    setLoading(true); await sleep(550);
+    
+    if (mode === "forgot") { 
+      setLoading(false); 
+      pushToast("success", "Password reset email queued for delivery."); 
+      return; 
+    }
+
+    // Provision admin dynamically
+    if (emailLower === "admin@saimusicacademy.com" && form.password === "admin123") {
+      let adminUser = users.find(u => u.email.toLowerCase() === emailLower);
+      if (!adminUser) {
+        adminUser = { id: uid("user"), name: "Academy Admin", email: "admin@saimusicacademy.com", phone: "+91 98765 43210", role: "admin", createdAt: new Date().toISOString() };
+        setUsers(u => [...u, adminUser!]);
+      } else if (adminUser.role !== "admin") {
+        // Enforce admin role
+        adminUser.role = "admin";
+        setUsers(u => u.map(x => x.id === adminUser!.id ? { ...x, role: "admin" } : x));
+      }
+      setUser(adminUser);
+      pushToast("success", "Signed in as Admin.");
+      window.location.hash = routeHref("dashboard");
+      setLoading(false);
+      return;
+    }
+
+    // Provision student dynamically
+    if (emailLower === "student@saimusicacademy.com" && form.password === "student123") {
+      let studentUser = users.find(u => u.email.toLowerCase() === emailLower);
+      if (!studentUser) {
+        studentUser = { id: uid("user"), name: "Ramesh Kumar", email: "student@saimusicacademy.com", phone: "+91 98450 12345", role: "member", createdAt: new Date().toISOString() };
+        setUsers(u => [...u, studentUser!]);
+        
+        // Auto-seed an active subscription for this demo student
+        const mockSub: Subscription = {
+          id: uid("sub"),
+          planId: "starter",
+          cycle: "monthly",
+          status: "active",
+          startedAt: new Date().toISOString(),
+          nextRenewal: addDays(new Date(), 30),
+          paymentMethod: "card",
+          amount: 1499
+        };
+        // Save subscription using localStorage standard sync key
+        localStorage.setItem("sai-subscription", JSON.stringify(mockSub));
+      }
+      setUser(studentUser);
+      pushToast("success", "Signed in as Student.");
+      window.location.hash = routeHref("dashboard");
+      setLoading(false);
+      return;
+    }
+
+    const existing = users.find((u) => u.email.toLowerCase() === emailLower);
+    
+    if (mode === "login") {
+      if (!existing) { setLoading(false); setError("No account found. Switch to sign up to create one."); return; }
+      setUser(existing); pushToast("success", "Signed in successfully."); window.location.hash = routeHref("dashboard");
+    } else {
+      if (existing) { setLoading(false); setError("An account already exists. Use login instead."); return; }
+      const user: User = { id: uid("user"), name: form.name.trim(), email: form.email.trim(), phone: form.phone.trim(), role: "member", createdAt: new Date().toISOString() };
+      setUsers((u) => [...u, user]); setUser(user); pushToast("success", "Account created successfully."); window.location.hash = routeHref("dashboard");
+    }
+    setLoading(false);
+  };
+
+  return (
+    <PageShell kicker="Account" title="Authentication-ready login, sign up, and reset flows.">
+      <div className="auth-panel">
+        <div className="billing-toggle compact">
+          {(["login", "signup", "forgot"] as const).map((m) => <button key={m} className={mode === m ? "active" : ""} onClick={() => setMode(m)}>{m}</button>)}
+        </div>
+        <form className="mt-8 grid gap-5" onSubmit={submit}>
+          {mode === "signup" ? <Field label="Full name"><input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></Field> : null}
+          <Field label="Email"><input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} /></Field>
+          {mode === "signup" ? <Field label="Phone"><input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} /></Field> : null}
+          {mode !== "forgot" ? <Field label="Password"><input type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} /></Field> : null}
+          {error ? <p className="error-text">{error}</p> : null}
+          <button className="nav-cta full" type="submit" disabled={loading}>{loading ? "Please wait..." : mode === "forgot" ? "Send reset link" : mode === "login" ? "Login" : "Create account"}</button>
+        </form>
+        
+        {mode === "login" && (
+          <div className="mt-6 border-t border-white/10 pt-6">
+            <p className="text-sm text-cream-50 text-center mb-3">💡 Quick Demo Access</p>
+            <div className="grid grid-cols-2 gap-3">
+              <button className="cta-secondary text-xs py-2 px-3 flex flex-col items-center" onClick={() => fillCredentials("student")}>
+                <span className="font-semibold text-white">Student Portal</span>
+                <span className="text-[10px] text-cream-50 opacity-60">student@saimusicacademy.com</span>
+              </button>
+              <button className="cta-secondary text-xs py-2 px-3 flex flex-col items-center border-gold/40 hover:border-gold" onClick={() => fillCredentials("admin")}>
+                <span className="font-semibold text-gold">Admin Panel</span>
+                <span className="text-[10px] text-cream-50 opacity-60">admin@saimusicacademy.com</span>
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </PageShell>
+  );
+}
+
+/* ── Dashboard Page ───────────────────────────────────── */
+
+function DashboardPage({ user, subscription, enquiries, tickets, users, setUser, updateUser, signOut }: { user: User | null; subscription: Subscription | null; enquiries: Enquiry[]; tickets: Ticket[]; users: User[]; setUser: (u: User) => void; updateUser: (u: User) => void; signOut: () => void }) {
+  const [profile, setProfile] = useState({ name: user?.name ?? "", email: user?.email ?? "", phone: user?.phone ?? "" });
+  const activePlan = subscription ? getPlan(subscription.planId) : null;
+  const userTickets = user ? tickets.filter((t) => t.email.toLowerCase() === user.email.toLowerCase()) : [];
+  const userEnquiries = user ? enquiries.filter((eq) => eq.email.toLowerCase() === user.email.toLowerCase()) : [];
+  useEffect(() => { setProfile({ name: user?.name ?? "", email: user?.email ?? "", phone: user?.phone ?? "" }); }, [user]);
+  if (!user) return <PageShell kicker="Protected" title="Sign in to access this area."><a className="nav-cta" href={routeHref("login")}>Go to login</a></PageShell>;
+  const saveProfile = (e: FormEvent) => { e.preventDefault(); const updated = { ...user, name: profile.name, email: profile.email, phone: profile.phone }; setUser(updated); updateUser(updated); };
+  return (
+    <PageShell kicker="Dashboard" title={`Welcome back, ${user.name}.`}>
+      <div className="dashboard-grid">
+        <div className="dash-card"><h3>Subscription</h3><p>{activePlan ? `${activePlan.name} is ${subscription?.status}. Next date: ${subscription?.nextRenewal.slice(0, 10)}.` : "No active subscription yet."}</p><a className="text-link" href={routeHref("billing")}>Manage billing</a></div>
+        <div className="dash-card"><h3>Support</h3><p>{userTickets.length} ticket records connected to your email.</p><a className="text-link" href={routeHref("support")}>Open support</a></div>
+        <div className="dash-card"><h3>Enquiries</h3><p>{userEnquiries.length} enquiry records with queued notifications.</p><a className="text-link" href={routeHref("contact")}>Send enquiry</a></div>
+      </div>
+      <div className="mt-10 grid gap-6 lg:grid-cols-[0.9fr_1.1fr]">
+        <form className="dash-card" onSubmit={saveProfile}><h3>Profile management</h3><div className="mt-5 grid gap-4"><Field label="Name"><input value={profile.name} onChange={(e) => setProfile({ ...profile, name: e.target.value })} /></Field><Field label="Email"><input value={profile.email} onChange={(e) => setProfile({ ...profile, email: e.target.value })} /></Field><Field label="Phone"><input value={profile.phone} onChange={(e) => setProfile({ ...profile, phone: e.target.value })} /></Field></div><div className="mt-5 flex flex-wrap gap-3"><button className="nav-cta" type="submit">Save profile</button><button className="cta-secondary" type="button" onClick={signOut}>Sign out</button></div></form>
+        <div className="dash-card"><h3>Admin-ready operations snapshot</h3><div className="ops-grid mt-5"><span>Users<strong>{users.length}</strong></span><span>Enquiries<strong>{enquiries.length}</strong></span><span>Tickets<strong>{tickets.length}</strong></span><span>Auth role<strong>{user.role}</strong></span></div><p className="mt-5 text-sm leading-6 text-cream-50">This data model can be connected to your database, payment webhooks, admin console, and email provider.</p></div>
+      </div>
+    </PageShell>
+  );
+}
+
+/* ── Billing Page ─────────────────────────────────────── */
+
+function BillingPage({ user, subscription, setSubscription, openCheckout, pushToast }: { user: User | null; subscription: Subscription | null; setSubscription: (s: Subscription | null) => void; openCheckout: (planId: PlanId, cycle: BillingCycle) => void; pushToast: (k: ToastKind, m: string) => void }) {
+  if (!user) return <PageShell kicker="Protected" title="Sign in to access this area."><a className="nav-cta" href={routeHref("login")}>Go to login</a></PageShell>;
+  const activePlan = subscription ? getPlan(subscription.planId) : null;
+  const cancel = () => { if (!subscription) return; setSubscription({ ...subscription, status: "canceled" }); pushToast("info", "Subscription canceled. Access remains until the current renewal date."); };
+  const renew = () => { if (!subscription) return; setSubscription({ ...subscription, status: "active", nextRenewal: addDays(new Date(), subscription.cycle === "monthly" ? 30 : 365) }); pushToast("success", "Subscription renewed successfully."); };
+  return (
+    <PageShell kicker="Billing" title="Manage subscription, renewal, cancellation, and plan changes.">
+      <div className="billing-panel">
+        <div><p className="plan-tag">Current plan</p><h3>{activePlan ? activePlan.name : "No plan selected"}</h3><p>{subscription ? `${subscription.status} subscription paid by ${subscription.paymentMethod}. Amount: ${formatMoney(subscription.amount)}.` : "Start a plan from pricing to activate billing."}</p></div>
+        <div className="flex flex-wrap gap-3">
+          {subscription ? <button className="nav-cta" onClick={renew}>Renew</button> : null}
+          {subscription ? <button className="cta-secondary" onClick={cancel}>Cancel</button> : null}
+          <button className="cta-secondary" onClick={() => openCheckout("starter", "monthly")}>Downgrade</button>
+          <button className="nav-cta" onClick={() => openCheckout("pro", "yearly")}>Upgrade</button>
+        </div>
+      </div>
+    </PageShell>
+  );
+}
+
+/* ── Support Page ─────────────────────────────────────── */
+
+function SupportPage({ user, tickets, createTicket }: { user: User | null; tickets: Ticket[]; createTicket: (input: TicketInput) => Promise<Ticket> }) {
+  const [form, setForm] = useState({ email: user?.email ?? "", subject: "", message: "", priority: "normal" as "normal" | "urgent" });
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  useEffect(() => setForm((c) => ({ ...c, email: user?.email ?? c.email })), [user]);
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!validateEmail(form.email) || form.subject.trim().length < 3 || form.message.trim().length < 10) { setError("Enter a valid email, subject, and support message."); return; }
+    setError(""); setLoading(true); await createTicket({ ...form, source: "support" }); setLoading(false);
+    setForm({ email: user?.email ?? "", subject: "", message: "", priority: "normal" });
+  };
+  return (
+    <PageShell kicker="Support" title="Create tickets, request help, and review support history.">
+      <div className="grid gap-8 lg:grid-cols-[0.9fr_1.1fr]">
+        <form className="dash-card" onSubmit={submit}><h3>Create support ticket</h3><div className="mt-5 grid gap-4"><Field label="Email"><input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} /></Field><Field label="Subject"><input value={form.subject} onChange={(e) => setForm({ ...form, subject: e.target.value })} /></Field><Field label="Priority"><select value={form.priority} onChange={(e) => setForm({ ...form, priority: e.target.value as "normal" | "urgent" })}><option value="normal">Normal</option><option value="urgent">Urgent</option></select></Field><Field label="Message"><textarea rows={5} value={form.message} onChange={(e) => setForm({ ...form, message: e.target.value })} /></Field></div>{error ? <p className="error-text">{error}</p> : null}<button className="nav-cta mt-5" type="submit" disabled={loading}>{loading ? "Creating..." : "Create ticket"}</button></form>
+        <div className="dash-card"><h3>Recent ticket records</h3><div className="record-list mt-5">{tickets.length ? tickets.slice(0, 6).map((t) => <p key={t.id}><strong>{t.subject}</strong><span>{t.status} - {t.email}</span></p>) : <p>No tickets yet.</p>}</div></div>
+      </div>
+    </PageShell>
+  );
+}
+
+/* ── Legal Pages ──────────────────────────────────────── */
+
+function LegalPage({ type }: { type: "terms" | "privacy" }) {
+  return (
+    <PageShell kicker={type === "terms" ? "Terms" : "Privacy"} title={type === "terms" ? "Clear product terms for a subscription learning platform." : "Privacy-ready structure for user, billing, support, and enquiry data."}>
+      <div className="prose-block"><p>This page is structured for legal content, consent language, data retention rules, billing terms, support policies, and user rights.</p><p>Before public launch, connect this page to your approved legal policy, payment processor terms, privacy policy, and regional compliance requirements.</p></div>
+    </PageShell>
+  );
+}
+
+/* ── Gallery Page ─────────────────────────────────────── */
+
+function GalleryPage() {
+  const images = [
+    { src: "/images/gallery/music-class-1.jpg", alt: "Students learning piano at Sai Music Academy" },
+    { src: "/images/gallery/music-class-2.jpg", alt: "Guitar lesson with expert teacher" },
+    { src: "/images/gallery/music-class-3.jpg", alt: "Students receiving certificates at award ceremony" },
+    { src: "/images/gallery/music-class-4.jpg", alt: "Keyboard recital performance on stage" },
+    { src: "/images/gallery/music-class-5.jpg", alt: "Group photo of music academy students" },
+    { src: "/images/gallery/music-class-6.jpg", alt: "Mridangam percussion lesson" },
+    { src: "/images/gallery/music-class-7.jpg", alt: "Carnatic vocal music training" },
+    { src: "/images/gallery/music-class-8.jpg", alt: "Flute lesson at academy" },
+    { src: "/images/gallery/music-class-1.jpg", alt: "Violin class with senior student" },
+  ];
+  return (
+    <PageShell kicker="Gallery" title="Our Academy In Pictures">
+      <p className="prose-block">Explore live performances, classroom moments, award ceremonies, and student achievements at Sai Music Academy.</p>
+      <div className="gallery-grid mt-10">
+        {images.map((img, i) => (
+          <figure key={i} className="gallery-item"><img src={img.src} alt={img.alt} loading="lazy" /><figcaption>{img.alt}</figcaption></figure>
+        ))}
+      </div>
+      <div className="stats-strip mt-16" style={{ borderRadius: "1.5rem" }}>
+        <div><StatCounter target={1000} suffix="+" /><div className="stat-label">Happy Students</div></div>
+        <div><StatCounter target={10000} suffix="+" /><div className="stat-label">Classes Completed</div></div>
+        <div><StatCounter target={100} suffix="+" /><div className="stat-label">Expert Gurus</div></div>
+        <div><StatCounter target={15} suffix="+" /><div className="stat-label">Years Experience</div></div>
+      </div>
+    </PageShell>
+  );
+}
+
+/* ── Awards Page ──────────────────────────────────────── */
+
+function AwardsPage() {
+  const awards = [
+    { title: "Trinity College London Grade 8 Achievement", desc: "Anupama, just 11 years old, became the first youngest kid from Tamil Nadu to finish Grade 8 in the Trinity College of London theory exam in May 2016, from Sai Music Academy.", badge: "Youngest Achiever" },
+    { title: "Grade 5 Theory & M.Music Completion", desc: "Guru Pranav successfully completed Grade 5 in Theory and M.Music, demonstrating exceptional dedication and the academy's commitment to producing well-rounded musicians.", badge: "Academic Excellence" },
+    { title: "Nallaasiriyar Award — Tamil Nadu Music College", desc: "Our academy received the prestigious Nallaasiriyar (Good Teacher) Award for Tamil Nadu Music College, presented by the Erode Collector and Minister.", badge: "State Recognition" },
+    { title: "Trinity College Certificates — Grades 2 to 8", desc: "Multiple students received Trinity College of London certificates ranging from Grade 2 to Grade 8, reflecting our dedication to maintaining international standards.", badge: "International Standard" },
+    { title: "Keyboard Practical Exam — Grades 2 to 6", desc: "Our senior students successfully attended and passed keyboard practical exams from Grade 2 to Grade 6, showcasing comprehensive practical training.", badge: "Practical Excellence" },
+  ];
+  return (
+    <PageShell kicker="Awards" title="Our Achievements & Recognition">
+      <p className="prose-block">From local community honors to international recognition, Sai Music Academy has earned a prestigious position among musical institutions.</p>
+      <div className="awards-list mt-10">
+        {awards.map((a, i) => (
+          <article key={i} className="award-card" data-reveal>
+            <div className="award-badge-wrap"><span className="award-badge">{a.badge}</span></div>
+            <div className="award-content"><h3>{a.title}</h3><p>{a.desc}</p></div>
+          </article>
+        ))}
+      </div>
+    </PageShell>
+  );
+}
+
+/* ── Checkout Modal ───────────────────────────────────── */
+
+function CheckoutModal({ request, currentUser, onClose, onComplete, pushToast }: { request: CheckoutRequest | null; currentUser: User | null; onClose: () => void; onComplete: (sub: Subscription, user: User) => void; pushToast: (k: ToastKind, m: string) => void }) {
+  const plan = request ? getPlan(request.planId) : null;
+  const [method, setMethod] = useState<PaymentMethod>("card");
+  const [coupon, setCoupon] = useState("");
+  const [form, setForm] = useState({ name: currentUser?.name ?? "", email: currentUser?.email ?? "", phone: currentUser?.phone ?? "", card: "", expiry: "", cvc: "", upi: "", wallet: "" });
+  const [error, setError] = useState("");
+  const [stage, setStage] = useState<"form" | "processing" | "success">("form");
+  const [processMsg, setProcessMsg] = useState("Connecting to Stripe Gateway...");
+
+  useEffect(() => { 
+    setForm((c) => ({ ...c, name: currentUser?.name ?? c.name, email: currentUser?.email ?? c.email, phone: currentUser?.phone ?? c.phone })); 
+  }, [currentUser]);
+
+  if (!request || !plan) return null;
+
+  const discount = couponCodes[coupon.trim().toUpperCase()] ?? 0;
+  const base = request.cycle === "monthly" ? plan.monthly : plan.yearly;
+  const amount = Math.round(base * (1 - discount / 100));
+
+  // Auto-format card input: "4242 4242 4242 4242"
+  const handleCardChange = (val: string) => {
+    const cleaned = val.replace(/\D/g, "").slice(0, 16);
+    const formatted = cleaned.replace(/(\d{4})(?=\d)/g, "$1 ");
+    setForm({ ...form, card: formatted });
+  };
+
+  // Auto-format expiry input: "MM/YY"
+  const handleExpiryChange = (val: string) => {
+    const cleaned = val.replace(/\D/g, "").slice(0, 4);
+    let formatted = cleaned;
+    if (cleaned.length > 2) {
+      formatted = cleaned.slice(0, 2) + "/" + cleaned.slice(2);
+    }
+    setForm({ ...form, expiry: formatted });
+  };
+
+  // Throw full screen confetti
+  const launchConfetti = () => {
+    const container = document.createElement("div");
+    container.style.position = "fixed";
+    container.style.top = "0";
+    container.style.left = "0";
+    container.style.width = "100vw";
+    container.style.height = "100vh";
+    container.style.pointerEvents = "none";
+    container.style.zIndex = "9999";
+    container.style.overflow = "hidden";
+    document.body.appendChild(container);
+
+    const colors = ["#D4A853", "#F0C96B", "#ffffff", "#ff4757", "#2ed573", "#1e90ff"];
+    for (let i = 0; i < 75; i++) {
+      const el = document.createElement("div");
+      el.style.position = "absolute";
+      el.style.width = `${Math.random() * 8 + 6}px`;
+      el.style.height = `${Math.random() * 12 + 6}px`;
+      el.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
+      el.style.left = `${Math.random() * 100}vw`;
+      el.style.top = "-20px";
+      el.style.borderRadius = "2px";
+      el.style.opacity = `${Math.random() * 0.8 + 0.2}`;
+      el.style.transform = `rotate(${Math.random() * 360}deg)`;
+      
+      container.appendChild(el);
+
+      const speed = Math.random() * 3 + 2;
+      const rotationSpeed = Math.random() * 10 - 5;
+      let top = -20;
+      let left = parseFloat(el.style.left);
+      
+      const frame = setInterval(() => {
+        top += speed;
+        el.style.top = `${top}px`;
+        el.style.transform = `rotate(${top * rotationSpeed}deg)`;
+        if (top > window.innerHeight) {
+          clearInterval(frame);
+          el.remove();
+        }
+      }, 16);
+    }
+
+    setTimeout(() => container.remove(), 5000);
+  };
+
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    if (form.name.trim().length < 2 || !validateEmail(form.email) || form.phone.trim().length < 7) { setError("Enter name, valid email, and phone before checkout."); return; }
+    if (coupon.trim() && discount === 0) { setError("Coupon not recognized. Try SAI20, TRIAL30, or YEARLY10."); return; }
+    if (method === "card" && (form.card.replace(/\s/g, "").length < 12 || form.expiry.length < 5 || form.cvc.length < 3)) { setError("Enter valid card number, expiry (MM/YY), and CVC."); return; }
+    if (method === "upi" && !form.upi.includes("@")) { setError("Enter a valid UPI ID, for example name@bank."); return; }
+    if (method === "wallet" && form.wallet.trim().length < 3) { setError("Enter a wallet identifier."); return; }
+    
+    setError(""); 
+    setStage("processing");
+    
+    // Gateway animation stages
+    setProcessMsg("Connecting to Stripe payment gateway...");
+    await sleep(900);
+    setProcessMsg("Authorizing secure test transaction...");
+    await sleep(1000);
+    setProcessMsg("Generating subscription records in database...");
+    await sleep(800);
+    
+    setStage("success");
+    launchConfetti();
+    pushToast("success", `${plan.name} enrollment complete. Your classical journey begins!`);
+    await sleep(2200);
+
+    const user: User = currentUser ?? { id: uid("user"), name: form.name.trim(), email: form.email.trim(), phone: form.phone.trim(), role: "member", createdAt: new Date().toISOString() };
+    const sub: Subscription = { id: uid("sub"), planId: plan.id, cycle: request.cycle, status: "trial", coupon: coupon.trim().toUpperCase() || undefined, startedAt: new Date().toISOString(), nextRenewal: addDays(new Date(), plan.trialDays), paymentMethod: method, amount };
+    
+    // Store in localStorage for absolute zero-cost persistence
+    localStorage.setItem("sai-subscription", JSON.stringify(sub));
+    
+    onComplete(sub, user);
+  };
+
+  return (
+    <div className="modal-backdrop" role="dialog" aria-modal="true">
+      {stage === "form" && (
+        <form className="checkout-modal animate-fade-in" onSubmit={submit}>
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="plan-tag text-gold">Secure Stripe Checkout</p>
+              <h3 className="plan-name">{plan.name}</h3>
+              <p className="text-sm opacity-80">{formatMoney(amount)} / {request.cycle}. {plan.trialDays}-day trial starts today.</p>
+            </div>
+            <button className="close-btn" type="button" onClick={onClose}>✕</button>
+          </div>
+          
+          <div className="mt-6 grid gap-4 sm:grid-cols-2">
+            <Field label="Name"><input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></Field>
+            <Field label="Email"><input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} /></Field>
+            <Field label="Phone"><input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} /></Field>
+            <Field label="Coupon Code"><input placeholder="e.g. SAI20" value={coupon} onChange={(e) => setCoupon(e.target.value)} /></Field>
+          </div>
+          
+          <div className="payment-methods" role="group">
+            {(["card", "upi", "wallet"] as PaymentMethod[]).map((m) => (
+              <button key={m} className={method === m ? "active" : ""} type="button" onClick={() => setMethod(m)}>
+                {m.toUpperCase()}
+              </button>
+            ))}
+          </div>
+          
+          {method === "card" && (
+            <div className="grid gap-4 sm:grid-cols-3">
+              <Field label="Card number" wide>
+                <input placeholder="4242 4242 4242 4242" inputMode="numeric" value={form.card} onChange={(e) => handleCardChange(e.target.value)} />
+              </Field>
+              <Field label="Expiry (MM/YY)">
+                <input placeholder="MM/YY" value={form.expiry} onChange={(e) => handleExpiryChange(e.target.value)} />
+              </Field>
+              <Field label="CVC">
+                <input placeholder="123" inputMode="numeric" type="password" value={form.cvc} onChange={(e) => setForm({ ...form, cvc: e.target.value.replace(/\D/g, "").slice(0, 4) })} />
+              </Field>
+              <div className="sm:col-span-3 bg-white/5 border border-white/10 rounded p-2.5 text-[11px] text-cream-50 opacity-80 flex items-center gap-2">
+                <span className="text-gold">💡</span> Use Stripe test credentials: any card number starting with <strong>4242</strong>, any expiry, and any CVC code.
+              </div>
+            </div>
+          )}
+          
+          {method === "upi" && (
+            <Field label="UPI ID"><input placeholder="yourname@okhdfcbank" value={form.upi} onChange={(e) => setForm({ ...form, upi: e.target.value })} /></Field>
+          )}
+          
+          {method === "wallet" && (
+            <Field label="Wallet phone account"><input placeholder="e.g. +91 99999 88888" value={form.wallet} onChange={(e) => setForm({ ...form, wallet: e.target.value })} /></Field>
+          )}
+          
+          {discount ? <p className="success-text text-xs">🎉 Coupon code applied successfully! {discount}% discount deducted from base price.</p> : null}
+          {error ? <p className="error-text">{error}</p> : null}
+          
+          <button className="nav-cta full mt-5" type="submit">
+            Start {plan.trialDays}-Day Free Trial
+          </button>
+          
+          <p className="fine-print text-center mt-3 opacity-60">🛡️ Instant enrollment. Cancel anytime during the trial. Zero charges.</p>
+        </form>
+      )}
+
+      {stage === "processing" && (
+        <div className="checkout-modal flex flex-col items-center justify-center py-12 text-center animate-fade-in">
+          <div className="payment-spinner relative w-16 h-16 border-4 border-gold/20 border-t-gold rounded-full animate-spin mb-6"></div>
+          <h3 className="text-xl font-bold mb-2">Processing Enrollment</h3>
+          <p className="text-sm text-cream-50 opacity-80">{processMsg}</p>
+        </div>
+      )}
+
+      {stage === "success" && (
+        <div className="checkout-modal flex flex-col items-center justify-center py-12 text-center animate-fade-in border-gold/40">
+          <div className="w-16 h-16 bg-gold rounded-full flex items-center justify-center mb-6 shadow-[0_0_20px_rgba(212,168,83,0.5)]">
+            <svg className="w-8 h-8 text-black" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="3">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+            </svg>
+          </div>
+          <h3 className="text-2xl font-bold text-gold mb-2">Welcome to Sai Music Academy!</h3>
+          <p className="text-sm text-cream-50 opacity-90 max-w-sm">Transaction Approved. Your {plan.name} free trial is now active. Launching your student classroom...</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ── Chatbot ──────────────────────────────────────────── */
+
+function Chatbot({ user, createTicket, createEnquiry }: { user: User | null; createTicket: (input: TicketInput) => Promise<Ticket>; createEnquiry: (input: EnquiryInput) => Promise<Enquiry> }) {
+  const [open, setOpen] = useState(false);
+  const [messages, setMessages] = useStoredState<ChatMessage[]>("sai-chat-log", [{ id: uid("chat"), sender: "bot", text: "Hi. I can help with pricing, subscriptions, support tickets, or a human handoff.", createdAt: new Date().toISOString() }]);
+  const [text, setText] = useState("");
+  const [mode, setMode] = useState<"idle" | "handoff" | "lead">("idle");
+  const [handoff, setHandoff] = useState({ email: user?.email ?? "", issue: "" });
+  const [lead, setLead] = useState({ name: user?.name ?? "", email: user?.email ?? "", phone: user?.phone ?? "" });
+  const add = (s: "bot" | "user", t: string) => setMessages((m) => [...m, { id: uid("chat"), sender: s, text: t, createdAt: new Date().toISOString() }]);
+  const respond = (intent: string) => {
+    if (intent === "pricing") add("bot", "Beginner begins at INR 1,499/month. Intermediate is best for most learners. Use SAI20 for a demo discount.");
+    if (intent === "faq") add("bot", "Common topics: trials, payment methods, upgrades, cancellations, and live class support.");
+    if (intent === "handoff") { setMode("handoff"); add("bot", "I can create a ticket for human support. Please share your email and issue below."); }
+    if (intent === "lead") { setMode("lead"); add("bot", "Share your details and admissions will follow up with lesson options."); }
+  };
+  const send = (e: FormEvent) => { e.preventDefault(); if (!text.trim()) return; add("user", text.trim()); const lower = text.toLowerCase(); setText(""); if (lower.includes("price") || lower.includes("plan")) respond("pricing"); else if (lower.includes("human") || lower.includes("support")) respond("handoff"); else add("bot", "I can help with pricing, FAQ, lead capture, or support tickets."); };
+  return (
+    <div className="chatbot">
+      {open ? <div className="chat-window"><div className="chat-header"><strong>Sai assistant</strong><button onClick={() => setOpen(false)}>✕</button></div><div className="chat-messages">{messages.slice(-10).map((m) => <p key={m.id} className={`chat-${m.sender}`}>{m.text}</p>)}</div><div className="quick-replies"><button onClick={() => respond("pricing")}>Pricing</button><button onClick={() => respond("faq")}>FAQ</button><button onClick={() => respond("lead")}>Book demo</button><button onClick={() => respond("handoff")}>Human handoff</button></div>{mode === "handoff" ? <form className="chat-form" onSubmit={async (e) => { e.preventDefault(); if (!validateEmail(handoff.email) || handoff.issue.trim().length < 8) return; const t = await createTicket({ email: handoff.email, subject: "Chatbot handoff", message: handoff.issue, priority: "normal", source: "chatbot" }); add("bot", `Ticket ${t.id} created.`); setMode("idle"); }}><input placeholder="Email" value={handoff.email} onChange={(e) => setHandoff({ ...handoff, email: e.target.value })} /><textarea placeholder="Issue" value={handoff.issue} onChange={(e) => setHandoff({ ...handoff, issue: e.target.value })} /><button type="submit">Create ticket</button></form> : null}{mode === "lead" ? <form className="chat-form" onSubmit={async (e) => { e.preventDefault(); if (lead.name.trim().length < 2 || !validateEmail(lead.email) || lead.phone.trim().length < 7) return; const eq = await createEnquiry({ name: lead.name, email: lead.email, phone: lead.phone, subject: "Chatbot lead", message: "Lead requested follow-up.", source: "chatbot" }); add("bot", `Lead captured as enquiry ${eq.id}.`); setMode("idle"); }}><input placeholder="Name" value={lead.name} onChange={(e) => setLead({ ...lead, name: e.target.value })} /><input placeholder="Email" value={lead.email} onChange={(e) => setLead({ ...lead, email: e.target.value })} /><input placeholder="Phone" value={lead.phone} onChange={(e) => setLead({ ...lead, phone: e.target.value })} /><button type="submit">Capture lead</button></form> : null}<form className="chat-input" onSubmit={send}><input value={text} onChange={(e) => setText(e.target.value)} placeholder="Ask a question" /><button type="submit">Send</button></form></div> : null}
+      <button className="chat-fab" onClick={() => setOpen((v) => !v)}>{open ? "Close" : "Chat"}</button>
+    </div>
+  );
+}
+
+/* ── App ──────────────────────────────────────────────── */
+
+export default function App() {
+  const [route, navigate] = useRoute();
+  const [users, setUsers] = useStoredState<User[]>("sai-users", []);
+  const [user, setUser] = useStoredState<User | null>("sai-current-user", null);
+  const [subscription, setSubscription] = useStoredState<Subscription | null>("sai-subscription", null);
+  const [enquiries, setEnquiries] = useStoredState<Enquiry[]>("sai-enquiries", []);
+  const [tickets, setTickets] = useStoredState<Ticket[]>("sai-tickets", []);
+  const [toasts, setToasts] = useState<Toast[]>([]);
+  const [checkout, setCheckout] = useState<CheckoutRequest | null>(null);
+
+  useReveal();
+
+  const pushToast = (kind: ToastKind, message: string) => {
+    const t = { id: uid("toast"), kind, message };
+    setToasts((x) => [...x, t]);
+    window.setTimeout(() => setToasts((x) => x.filter((y) => y.id !== t.id)), 3600);
+  };
+
+  const createEnquiry = async (input: EnquiryInput) => {
+    await sleep(450);
+    const eq: Enquiry = { id: uid("enq"), ...input, createdAt: new Date().toISOString(), adminEmailQueued: true, autoReplyQueued: true };
+    setEnquiries((x) => [eq, ...x]); pushToast("success", "Enquiry stored and email notifications queued."); return eq;
+  };
+
+  const createTicket = async (input: TicketInput) => {
+    await sleep(450);
+    const t: Ticket = { id: uid("ticket"), ...input, status: "open", createdAt: new Date().toISOString() };
+    setTickets((x) => [t, ...x]); pushToast("success", "Support ticket created."); return t;
+  };
+
+  const openCheckout = (planId: PlanId, cycle: BillingCycle) => setCheckout({ planId, cycle });
+
+  const completeCheckout = (sub: Subscription, u: User) => {
+    setSubscription(sub); setUser(u);
+    setUsers((x) => (x.some((y) => y.email.toLowerCase() === u.email.toLowerCase()) ? x.map((y) => (y.email.toLowerCase() === u.email.toLowerCase() ? u : y)) : [...x, u]));
+    setCheckout(null); navigate("billing");
+  };
+
+  const updateUser = (u: User) => { setUsers((x) => x.map((y) => (y.id === u.id ? u : y))); pushToast("success", "Profile saved."); };
+
+  const page = useMemo(() => {
+    if (route === "home") return <><Hero navigate={navigate} openCheckout={openCheckout} user={user} /><StatsStrip /><AboutSection /><FeaturesSection /><CoursesMarquee /><TestimonialsSection /><CTASection navigate={navigate} /></>;
+    if (route === "about") return <AboutPage />;
+    if (route === "features") return <FeaturesPage />;
+    if (route === "pricing") return <PricingPage openCheckout={openCheckout} />;
+    if (route === "faq") return <FAQPage />;
+    if (route === "contact") return <ContactPage createEnquiry={createEnquiry} />;
+    if (route === "login") return <AuthPage users={users} setUsers={setUsers} setUser={setUser} pushToast={pushToast} />;
+    if (route === "dashboard") return <DashboardPage user={user} subscription={subscription} enquiries={enquiries} tickets={tickets} users={users} setUser={setUser} updateUser={updateUser} signOut={() => { setUser(null); pushToast("info", "Signed out."); }} />;
+    if (route === "billing") return <BillingPage user={user} subscription={subscription} setSubscription={setSubscription} openCheckout={openCheckout} pushToast={pushToast} />;
+    if (route === "support") return <SupportPage user={user} tickets={tickets} createTicket={createTicket} />;
+    if (route === "awards") return <AwardsPage />;
+    if (route === "gallery") return <GalleryPage />;
+    if (route === "terms") return <LegalPage type="terms" />;
+    return <LegalPage type="privacy" />;
+  }, [route, user, subscription, enquiries, tickets, users]);
+
+  return (
+    <div className="min-h-screen">
+      {route !== "home" && <Header route={route} user={user} navigate={navigate} />}
+      {page}
+      <Footer />
+      <CheckoutModal request={checkout} currentUser={user} onClose={() => setCheckout(null)} onComplete={completeCheckout} pushToast={pushToast} />
+      <Chatbot user={user} createTicket={createTicket} createEnquiry={createEnquiry} />
+      <ToastList toasts={toasts} />
+    </div>
+  );
+}

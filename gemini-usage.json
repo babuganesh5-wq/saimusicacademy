@@ -1,0 +1,39 @@
+{
+  "totalRequests": 2,
+  "totalInputTokens": 38,
+  "totalOutputTokens": 76,
+  "totalTokens": 114,
+  "totalCost": 0.00022892500000000002,
+  "successfulRequests": 2,
+  "avgLatencyMs": 352,
+  "requestLogs": [
+    {
+      "id": "node_req_1779345587039",
+      "timestamp": "2026-05-21T06:39:47.039Z",
+      "model": "gemini-1.5-pro",
+      "inputTokens": 21,
+      "outputTokens": 38,
+      "totalTokens": 59,
+      "cost": 0.00021625000000000003,
+      "latency": 351,
+      "status": 200,
+      "prompt": "Compose a short melodic structure for Carnatic Flute learners.",
+      "completion": "Mock Gemini Response for prompt: \"Compose a short melodic structure for Carnatic Flute learners.\". Your music academy website has beautiful UI styling and dynamic animations.",
+      "endpoint": "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent"
+    },
+    {
+      "id": "node_req_1779345586640",
+      "timestamp": "2026-05-21T06:39:46.640Z",
+      "model": "gemini-2.0-flash",
+      "inputTokens": 17,
+      "outputTokens": 38,
+      "totalTokens": 55,
+      "cost": 0.000012675,
+      "latency": 352,
+      "status": 200,
+      "prompt": "How can I integrate audio hooks to the web UI?",
+      "completion": "Mock Gemini Response for prompt: \"How can I integrate audio hooks to the web UI?\". Your music academy website has beautiful UI styling and dynamic animations.",
+      "endpoint": "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent"
+    }
+  ]
+}
