@@ -1331,30 +1331,44 @@ function ContactPage({
         <div className="flex flex-col gap-6">
           <div className="dash-card rounded-xl border-gold/15 bg-black/40 p-6 space-y-6">
             <div>
-              <span className="text-[10px] uppercase font-bold text-gold tracking-widest bg-gold/10 px-2 py-0.5 rounded">Contact Coordinates</span>
-              <p className="text-[11px] opacity-60 mt-3">Direct channels for swift support and assistance.</p>
+              <span className="text-[10px] uppercase font-bold text-gold tracking-widest bg-gold/10 px-2 py-0.5 rounded">Academy Coordinates</span>
+              <p className="text-[11px] opacity-60 mt-3">Direct channels for swift support, scheduling, and learning coordinates.</p>
             </div>
             
             <div className="space-y-4">
-              <div className="flex gap-3 items-center">
-                <span className="text-gold text-base">📞</span>
+              <div className="flex gap-3 items-start">
+                <span className="text-gold text-base mt-0.5">🕒</span>
                 <div>
-                  <h4 className="text-xs font-bold text-white">Call/WhatsApp</h4>
-                  <p className="text-[11px] opacity-60 mt-0.5">+91 72007 47726</p>
+                  <h4 className="text-xs font-bold text-white">Class Timings</h4>
+                  <p className="text-[11px] opacity-80 mt-0.5">Monday - Sunday</p>
+                  <p className="text-[11px] text-gold font-semibold mt-0.5">09 AM - 10 PM</p>
+                  <p className="text-[10px] opacity-50 mt-1">Classes available throughout the day with flexible scheduling.</p>
                 </div>
               </div>
-              <div className="flex gap-3 items-center">
-                <span className="text-gold text-base">✉️</span>
+
+              <div className="flex gap-3 items-start">
+                <span className="text-gold text-base mt-0.5">📞</span>
+                <div>
+                  <h4 className="text-xs font-bold text-white">Contact Phones</h4>
+                  <p className="text-[11px] opacity-80 mt-0.5">7200747726 / 9952183181</p>
+                </div>
+              </div>
+
+              <div className="flex gap-3 items-start">
+                <span className="text-gold text-base mt-0.5">✉️</span>
                 <div>
                   <h4 className="text-xs font-bold text-white">Email Address</h4>
-                  <p className="text-[11px] opacity-60 mt-0.5">contact@saimusicacademy.com</p>
+                  <p className="text-[11px] opacity-80 mt-0.5">ganeshbabu0704@gmail.com</p>
                 </div>
               </div>
-              <div className="flex gap-3 items-center">
-                <span className="text-gold text-base">📍</span>
+
+              <div className="flex gap-3 items-start">
+                <span className="text-gold text-base mt-0.5">📍</span>
                 <div>
-                  <h4 className="text-xs font-bold text-white">Location</h4>
-                  <p className="text-[11px] opacity-60 mt-0.5">Chennai, Tamil Nadu, India</p>
+                  <h4 className="text-xs font-bold text-white">Academy Address</h4>
+                  <p className="text-[11px] opacity-80 mt-0.5">Sai Music Academy</p>
+                  <p className="text-[11px] opacity-60 mt-0.5">QR6F+598, Shanthapuram</p>
+                  <p className="text-[11px] opacity-60 mt-0.5">Hosur, Tamil Nadu 63512</p>
                 </div>
               </div>
             </div>
@@ -1363,7 +1377,7 @@ function ContactPage({
               <a href="https://api.whatsapp.com/send?phone=917200747726&text=Hello%20Sai%20Music%20Academy!%20I%20have%20an%20inquiry." target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-2 bg-emerald-600/20 text-emerald-400 border border-emerald-500/20 hover:bg-emerald-600/30 transition-all py-2 rounded-lg text-xs font-semibold">
                 💬 Chat on WhatsApp
               </a>
-              <a href="mailto:contact@saimusicacademy.com" className="flex items-center justify-center gap-2 bg-gold/10 text-gold border border-gold/20 hover:bg-gold/20 transition-all py-2 rounded-lg text-xs font-semibold">
+              <a href="mailto:ganeshbabu0704@gmail.com" className="flex items-center justify-center gap-2 bg-gold/10 text-gold border border-gold/20 hover:bg-gold/20 transition-all py-2 rounded-lg text-xs font-semibold">
                 ✉️ Send direct Email
               </a>
             </div>
