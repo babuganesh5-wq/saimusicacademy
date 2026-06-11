@@ -1,0 +1,10 @@
+fastapi
+uvicorn
+pydantic
+langchain
+langchain-community
+langchain-core
+langgraph
+sentence-transformers
+langchain-google-genai
+langchain-nvidia-ai-endpoints

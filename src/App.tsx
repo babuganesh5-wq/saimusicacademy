@@ -3197,7 +3197,10 @@ function CheckoutModal({ request, currentUser, onClose, onComplete, pushToast }:
 function Chatbot({ user, createTicket, createEnquiry }: { user: User | null; createTicket: (input: TicketInput) => Promise<Ticket>; createEnquiry: (input: EnquiryInput, skipWhatsApp?: boolean) => Promise<Enquiry> }) {
   const [open, setOpen] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [provider, setProvider] = useStoredState<"gemini" | "nvidia" | "local">("sai-ai-provider", "gemini");
   const [apiKey, setApiKey] = useStoredState<string>("sai-gemini-key", "");
+  const [nvidiaKey, setNvidiaKey] = useStoredState<string>("sai-nvidia-key", "");
+  const [nvidiaModel, setNvidiaModel] = useStoredState<string>("sai-nvidia-model", "meta/llama-3.1-70b-instruct");
   const [apiKeyInput, setApiKeyInput] = useState("");
   const [messages, setMessages] = useStoredState<ChatMessage[]>("sai-chat-log", [{ id: uid("chat"), sender: "bot", text: "🎶 Namaste! I'm Sai, your virtual music guide. I can help with our 22 classical programs, pricing, trial details, or connect you with a teacher. How may I assist you today?", createdAt: new Date().toISOString() }]);
   const [text, setText] = useState("");
@@ -3236,6 +3239,48 @@ Response style: Warm, professional, informative. Keep replies concise (2-4 sente
     return data.candidates?.[0]?.content?.parts?.[0]?.text ?? "I couldn't generate a response. Please try again.";
   };
 
+  const sendToNvidia = async (userText: string): Promise<string> => {
+    const endpoint = "https://integrate.api.nvidia.com/v1/chat/completions";
+    const body = {
+      model: nvidiaModel || "meta/llama-3.1-70b-instruct",
+      messages: [
+        { role: "system", content: SYSTEM_PROMPT },
+        { role: "user", content: userText }
+      ],
+      temperature: 0.7,
+      max_tokens: 256
+    };
+    const res = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${nvidiaKey}`
+      },
+      body: JSON.stringify(body)
+    });
+    if (!res.ok) throw new Error(`NVIDIA API Error ${res.status}`);
+    const data = await res.json();
+    return data.choices?.[0]?.message?.content ?? "I couldn't generate a response. Please try again.";
+  };
+
+  const sendToLocalAgent = async (userText: string): Promise<string> => {
+    const endpoint = "http://localhost:8000/api/chat";
+    const body = {
+      text: userText,
+      user_id: user?.id || "anonymous"
+    };
+    const res = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(body)
+    });
+    if (!res.ok) throw new Error(`Local Agent Error ${res.status}`);
+    const data = await res.json();
+    return data.reply ?? "I couldn't generate a response from the local agent. Please try again.";
+  };
+
   const offlineFallback = (lower: string): string => {
     if (lower.includes("price") || lower.includes("plan") || lower.includes("cost") || lower.includes("fee"))
       return "💰 Our plans: Beginner (₹1,499/mo, 14-day trial), Intermediate (₹2,999/mo, 14-day trial), Advanced (₹7,499/mo, 7-day trial). Use SAI20 for 20% off!";
@@ -3272,16 +3317,20 @@ Response style: Warm, professional, informative. Keep replies concise (2-4 sente
       return;
     }
 
-    // Try live Gemini if API key set
-    if (apiKey.trim()) {
+    const currentKey = provider === "gemini" ? apiKey : nvidiaKey;
+    if (provider === "local" || currentKey.trim()) {
       setBotTyping(true);
       try {
-        const aiReply = await sendToGemini(userMsg);
+        const aiReply = provider === "local"
+          ? await sendToLocalAgent(userMsg)
+          : provider === "gemini"
+            ? await sendToGemini(userMsg)
+            : await sendToNvidia(userMsg);
         setBotTyping(false);
         add("bot", aiReply);
       } catch (err) {
         setBotTyping(false);
-        add("bot", "⚠️ AI is temporarily unavailable. " + offlineFallback(lower));
+        add("bot", `⚠️ AI (${provider.toUpperCase()}) is temporarily unavailable. ` + offlineFallback(lower));
       }
     } else {
       // Offline keyword fallback
@@ -3305,13 +3354,17 @@ Response style: Warm, professional, informative. Keep replies concise (2-4 sente
             <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
               <span style={{ fontSize: "18px" }}>🎵</span>
               <strong>Sai AI Assistant</strong>
-              {apiKey && <span style={{ fontSize: "9px", background: "rgba(52,211,153,0.15)", color: "#34d399", padding: "2px 6px", borderRadius: "4px", fontWeight: "bold" }}>AI ACTIVE</span>}
+              {(provider === "gemini" ? apiKey : nvidiaKey) && (
+                <span style={{ fontSize: "9px", background: "rgba(52,211,153,0.15)", color: "#34d399", padding: "2px 6px", borderRadius: "4px", fontWeight: "bold" }}>
+                  {provider.toUpperCase()} ACTIVE
+                </span>
+              )}
             </div>
             <div style={{ display: "flex", gap: "4px" }}>
               <button
                 onClick={() => setShowSettings((v) => !v)}
                 style={{ background: "none", border: "none", cursor: "pointer", color: "rgba(255,255,255,0.6)", fontSize: "14px", padding: "4px" }}
-                title="Gemini AI Settings"
+                title="AI Settings"
               >
                 ⚙️
               </button>
@@ -3322,31 +3375,159 @@ Response style: Warm, professional, informative. Keep replies concise (2-4 sente
           {/* Settings Panel */}
           {showSettings && (
             <div style={{ padding: "12px 16px", background: "rgba(0,0,0,0.4)", borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
-              <p style={{ fontSize: "10px", color: "#d4a853", fontWeight: "bold", marginBottom: "6px", textTransform: "uppercase", letterSpacing: "0.05em" }}>🔑 Gemini AI Key</p>
-              <p style={{ fontSize: "10px", color: "rgba(255,255,255,0.5)", marginBottom: "8px" }}>Enter your free Google AI Studio API key to enable live Gemini AI responses.</p>
-              <div style={{ display: "flex", gap: "6px" }}>
-                <input
-                  type="password"
-                  placeholder={apiKey ? "Key saved — enter new to update" : "AIza..."}
-                  value={apiKeyInput}
-                  onChange={(e) => setApiKeyInput(e.target.value)}
-                  style={{ flex: 1, background: "rgba(0,0,0,0.3)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "6px", padding: "6px 8px", fontSize: "11px", color: "white", outline: "none" }}
-                />
+              {/* Provider Selection */}
+              <div style={{ display: "flex", gap: "4px", marginBottom: "12px" }}>
                 <button
-                  onClick={() => { if (apiKeyInput.trim()) { setApiKey(apiKeyInput.trim()); setApiKeyInput(""); add("bot", "✅ Gemini AI activated! Ask me anything about Indian classical music, our 22 programs, pricing, or schedule a demo."); setShowSettings(false); } }}
-                  style={{ background: "rgba(212,168,83,0.2)", border: "1px solid rgba(212,168,83,0.4)", borderRadius: "6px", padding: "6px 10px", fontSize: "10px", color: "#d4a853", cursor: "pointer", fontWeight: "bold" }}
+                  type="button"
+                  onClick={() => { setProvider("gemini"); setApiKeyInput(""); }}
+                  style={{
+                    flex: 1,
+                    background: provider === "gemini" ? "rgba(212,168,83,0.2)" : "rgba(255,255,255,0.05)",
+                    border: provider === "gemini" ? "1px solid rgba(212,168,83,0.4)" : "1px solid rgba(255,255,255,0.1)",
+                    borderRadius: "6px",
+                    padding: "6px 4px",
+                    fontSize: "9px",
+                    color: provider === "gemini" ? "#d4a853" : "rgba(255,255,255,0.6)",
+                    cursor: "pointer",
+                    fontWeight: "bold",
+                    transition: "all 0.2s"
+                  }}
                 >
-                  Save
+                  Gemini
                 </button>
-                {apiKey && (
-                  <button
-                    onClick={() => { setApiKey(""); add("bot", "🔌 AI key removed. Switching to offline response mode."); }}
-                    style={{ background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.2)", borderRadius: "6px", padding: "6px 8px", fontSize: "10px", color: "#f87171", cursor: "pointer" }}
-                  >
-                    Clear
-                  </button>
-                )}
+                <button
+                  type="button"
+                  onClick={() => { setProvider("nvidia"); setApiKeyInput(""); }}
+                  style={{
+                    flex: 1,
+                    background: provider === "nvidia" ? "rgba(212,168,83,0.2)" : "rgba(255,255,255,0.05)",
+                    border: provider === "nvidia" ? "1px solid rgba(212,168,83,0.4)" : "1px solid rgba(255,255,255,0.1)",
+                    borderRadius: "6px",
+                    padding: "6px 4px",
+                    fontSize: "9px",
+                    color: provider === "nvidia" ? "#d4a853" : "rgba(255,255,255,0.6)",
+                    cursor: "pointer",
+                    fontWeight: "bold",
+                    transition: "all 0.2s"
+                  }}
+                >
+                  NVIDIA NIM
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setProvider("local"); setApiKeyInput(""); }}
+                  style={{
+                    flex: 1,
+                    background: provider === "local" ? "rgba(212,168,83,0.2)" : "rgba(255,255,255,0.05)",
+                    border: provider === "local" ? "1px solid rgba(212,168,83,0.4)" : "1px solid rgba(255,255,255,0.1)",
+                    borderRadius: "6px",
+                    padding: "6px 4px",
+                    fontSize: "9px",
+                    color: provider === "local" ? "#d4a853" : "rgba(255,255,255,0.6)",
+                    cursor: "pointer",
+                    fontWeight: "bold",
+                    transition: "all 0.2s"
+                  }}
+                >
+                  Local Agent
+                </button>
               </div>
+
+              {provider === "gemini" && (
+                <>
+                  <p style={{ fontSize: "10px", color: "#d4a853", fontWeight: "bold", marginBottom: "4px", textTransform: "uppercase", letterSpacing: "0.05em" }}>🔑 Gemini AI Key</p>
+                  <p style={{ fontSize: "10px", color: "rgba(255,255,255,0.5)", marginBottom: "8px" }}>Enter your free Google AI Studio API key to enable live Gemini AI responses.</p>
+                  <div style={{ display: "flex", gap: "6px" }}>
+                    <input
+                      type="password"
+                      placeholder={apiKey ? "Key saved — enter new to update" : "AIza..."}
+                      value={apiKeyInput}
+                      onChange={(e) => setApiKeyInput(e.target.value)}
+                      style={{ flex: 1, background: "rgba(0,0,0,0.3)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "6px", padding: "6px 8px", fontSize: "11px", color: "white", outline: "none" }}
+                    />
+                    <button
+                      onClick={() => { if (apiKeyInput.trim()) { setApiKey(apiKeyInput.trim()); setApiKeyInput(""); add("bot", "✅ Gemini AI activated! Ask me anything about Indian classical music, our 22 programs, pricing, or schedule a demo."); setShowSettings(false); } }}
+                      style={{ background: "rgba(212,168,83,0.2)", border: "1px solid rgba(212,168,83,0.4)", borderRadius: "6px", padding: "6px 10px", fontSize: "10px", color: "#d4a853", cursor: "pointer", fontWeight: "bold" }}
+                    >
+                      Save
+                    </button>
+                    {apiKey && (
+                      <button
+                        onClick={() => { setApiKey(""); add("bot", "🔌 AI key removed. Switching to offline response mode."); }}
+                        style={{ background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.2)", borderRadius: "6px", padding: "6px 8px", fontSize: "10px", color: "#f87171", cursor: "pointer" }}
+                      >
+                        Clear
+                      </button>
+                    )}
+                  </div>
+                </>
+              )}
+
+              {provider === "nvidia" && (
+                <>
+                  <p style={{ fontSize: "10px", color: "#d4a853", fontWeight: "bold", marginBottom: "4px", textTransform: "uppercase", letterSpacing: "0.05em" }}>🔑 NVIDIA NIM Key</p>
+                  <p style={{ fontSize: "10px", color: "rgba(255,255,255,0.5)", marginBottom: "8px" }}>Enter your free NVIDIA NIM API key (starts with nvapi-...) to enable Llama-3.1 live responses.</p>
+                  <div style={{ display: "flex", gap: "6px", marginBottom: "8px" }}>
+                    <input
+                      type="password"
+                      placeholder={nvidiaKey ? "Key saved — enter new to update" : "nvapi-..."}
+                      value={apiKeyInput}
+                      onChange={(e) => setApiKeyInput(e.target.value)}
+                      style={{ flex: 1, background: "rgba(0,0,0,0.3)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "6px", padding: "6px 8px", fontSize: "11px", color: "white", outline: "none" }}
+                    />
+                    <button
+                      onClick={() => { if (apiKeyInput.trim()) { setNvidiaKey(apiKeyInput.trim()); setApiKeyInput(""); add("bot", "✅ NVIDIA NIM AI activated! Powered by Llama 3.1. Ask me anything about our school."); setShowSettings(false); } }}
+                      style={{ background: "rgba(212,168,83,0.2)", border: "1px solid rgba(212,168,83,0.4)", borderRadius: "6px", padding: "6px 10px", fontSize: "10px", color: "#d4a853", cursor: "pointer", fontWeight: "bold" }}
+                    >
+                      Save
+                    </button>
+                    {nvidiaKey && (
+                      <button
+                        onClick={() => { setNvidiaKey(""); add("bot", "🔌 NVIDIA key removed. Switching to offline response mode."); }}
+                        style={{ background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.2)", borderRadius: "6px", padding: "6px 8px", fontSize: "10px", color: "#f87171", cursor: "pointer" }}
+                      >
+                        Clear
+                      </button>
+                    )}
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                    <span style={{ fontSize: "9px", color: "rgba(255,255,255,0.5)" }}>Model:</span>
+                    <select
+                      value={nvidiaModel}
+                      onChange={(e) => setNvidiaModel(e.target.value)}
+                      style={{
+                        flex: 1,
+                        background: "rgba(0,0,0,0.4)",
+                        border: "1px solid rgba(255,255,255,0.15)",
+                        borderRadius: "4px",
+                        padding: "4px 6px",
+                        fontSize: "10px",
+                        color: "#d4a853",
+                        outline: "none"
+                      }}
+                    >
+                      <option value="meta/llama-3.1-70b-instruct">Llama 3.1 70B (Recommended)</option>
+                      <option value="meta/llama-3.1-405b-instruct">Llama 3.1 405B (Max Power)</option>
+                      <option value="meta/llama-3.1-8b-instruct">Llama 3.1 8B (Fast)</option>
+                      <option value="nvidia/llama-3.1-nemotron-70b-instruct">Nemotron 70B</option>
+                      <option value="mistralai/mixtral-8x22b-instruct-v0.1">Mixtral 8x22B</option>
+                    </select>
+                  </div>
+                </>
+              )}
+
+              {provider === "local" && (
+                <>
+                  <p style={{ fontSize: "10px", color: "#d4a853", fontWeight: "bold", marginBottom: "4px", textTransform: "uppercase", letterSpacing: "0.05em" }}>🤖 Local LangGraph Agent</p>
+                  <p style={{ fontSize: "10px", color: "rgba(255,255,255,0.5)", marginBottom: "8px" }}>Connects to your local python FastAPI backend (`http://localhost:8000/api/chat`) with integrated LangChain, LangGraph, and VectorDB.</p>
+                  <div style={{ background: "rgba(52,211,153,0.1)", border: "1px solid rgba(52,211,153,0.2)", borderRadius: "6px", padding: "8px", textAlign: "center" }}>
+                    <span style={{ fontSize: "10px", color: "#34d399", fontWeight: "bold" }}>⚡ LOCAL AGENT ACTIVE</span>
+                    <p style={{ fontSize: "9px", color: "rgba(255,255,255,0.6)", marginTop: "4px" }}>
+                      Make sure your local backend is running on port 8000 using <code>./run.sh</code> inside the <code>backend/</code> folder!
+                    </p>
+                  </div>
+                </>
+              )}
             </div>
           )}
 
@@ -3405,7 +3586,13 @@ Response style: Warm, professional, informative. Keep replies concise (2-4 sente
             <input
               value={text}
               onChange={(e) => setText(e.target.value)}
-              placeholder={apiKey ? "Ask anything — AI is active 🤖" : "Ask about plans, courses, demo..."}
+              placeholder={
+                provider === "local"
+                  ? "Ask anything — Local LangGraph Agent active 🤖"
+                  : (provider === "gemini" ? apiKey : nvidiaKey)
+                    ? `Ask anything — ${provider.toUpperCase()} active 🤖`
+                    : "Ask about plans, courses, demo..."
+              }
               disabled={botTyping}
             />
             <button type="submit" disabled={botTyping}>{botTyping ? "..." : "Send"}</button>
