@@ -1,0 +1,11 @@
+User-agent: *
+Allow: /
+
+# Sitemap
+Sitemap: https://saimusicacademy.com/sitemap.xml
+
+# Crawl-delay (optional, polite)
+Crawl-delay: 1
+
+# Block internal asset paths from indexing
+Disallow: /assets/
