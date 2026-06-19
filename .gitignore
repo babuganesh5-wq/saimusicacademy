@@ -27,3 +27,4 @@ graphify-out/
 backend/.venv/
 backend/__pycache__/
 *.pyc
+url-audit-report.md
